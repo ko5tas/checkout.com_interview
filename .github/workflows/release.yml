@@ -105,10 +105,11 @@ jobs:
 
       - name: DAST - Oversized payload (expect 413)
         run: |
-          PAYLOAD=$(python3 -c "print('{\"message\":\"' + 'A'*2097152 + '\"}')")
+          python3 -c "print('{\"message\":\"' + 'A'*2097152 + '\"}')" > /tmp/oversized.json
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -X POST http://localhost:8080/api/message \
-            -H "Content-Type: application/json" -d "$PAYLOAD")
+            -H "Content-Type: application/json" -d @/tmp/oversized.json)
+          rm /tmp/oversized.json
           [ "$STATUS" = "413" ] || { echo "FAIL: expected 413, got $STATUS"; exit 1; }
 
       - name: DAST - Method tampering (expect 405)

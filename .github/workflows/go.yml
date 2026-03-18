@@ -147,12 +147,13 @@ jobs:
 
       - name: DAST - Oversized payload
         run: |
-          # Generate 2MB payload (over our 1MB limit)
-          PAYLOAD=$(python3 -c "print('{\"message\":\"' + 'A'*2097152 + '\"}')")
+          # Generate 2MB payload to temp file (shell can't pass 2MB as argument)
+          python3 -c "print('{\"message\":\"' + 'A'*2097152 + '\"}')" > /tmp/oversized.json
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -X POST http://localhost:8080/api/message \
             -H "Content-Type: application/json" \
-            -d "$PAYLOAD")
+            -d @/tmp/oversized.json)
+          rm /tmp/oversized.json
           echo "Oversized payload probe: HTTP $STATUS"
           if [ "$STATUS" != "413" ]; then
             echo "FAIL: Expected 413, got $STATUS"
