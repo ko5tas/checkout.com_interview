@@ -41,18 +41,26 @@ type ErrorResponse struct {
 }
 
 func main() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/message", handleMessage)
+
+	addr := listenAddr
 	port := os.Getenv("FUNCTIONS_CUSTOMHANDLER_PORT")
 	if port != "" {
-		// Running as Azure Functions custom handler
-		http.HandleFunc("/api/message", handleMessage)
-		log.Printf("Starting custom handler on port %s", port)
-		log.Fatal(http.ListenAndServe(":"+port, nil))
-	} else {
-		// Running standalone (local dev / testing)
-		http.HandleFunc("/api/message", handleMessage)
-		log.Printf("Starting server on %s", listenAddr)
-		log.Fatal(http.ListenAndServe(listenAddr, nil))
+		addr = ":" + port
 	}
+
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	log.Printf("Starting server on %s", addr) //nolint:gosec // G706: addr is from FUNCTIONS_CUSTOMHANDLER_PORT, set by Azure runtime — not user-controlled
+	log.Fatal(srv.ListenAndServe())
 }
 
 func handleMessage(w http.ResponseWriter, r *http.Request) {

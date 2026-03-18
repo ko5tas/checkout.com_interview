@@ -1,12 +1,13 @@
 resource "azurerm_api_management" "main" {
-  name                 = "apim-${var.name_prefix}"
-  location             = var.location
-  resource_group_name  = var.resource_group_name
-  publisher_name       = var.publisher_name
-  publisher_email      = var.publisher_email
-  sku_name             = "Developer_1"
-  virtual_network_type = "Internal"
-  tags                 = var.tags
+  name                          = "apim-${var.name_prefix}"
+  location                      = var.location
+  resource_group_name           = var.resource_group_name
+  publisher_name                = var.publisher_name
+  publisher_email               = var.publisher_email
+  sku_name                      = "Developer_1"
+  virtual_network_type          = "Internal"
+  public_network_access_enabled = false
+  tags                          = var.tags
 
   virtual_network_configuration {
     subnet_id = var.subnet_id
