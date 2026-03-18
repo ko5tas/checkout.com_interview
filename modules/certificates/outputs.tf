@@ -18,12 +18,25 @@ output "client_key_pem" {
 
 output "ca_cert_thumbprint" {
   description = "SHA-1 thumbprint of the CA certificate (for APIM policy)"
-  value       = sha1(base64decode(tls_self_signed_cert.ca.cert_pem))
+  # PEM has headers/newlines that base64decode can't handle — strip them first
+  value = sha1(base64decode(
+    replace(replace(replace(
+      tls_self_signed_cert.ca.cert_pem,
+      "-----BEGIN CERTIFICATE-----", ""),
+      "-----END CERTIFICATE-----", ""),
+      "\n", "")
+  ))
 }
 
 output "client_cert_thumbprint" {
   description = "SHA-1 thumbprint of the client certificate"
-  value       = sha1(base64decode(tls_locally_signed_cert.client.cert_pem))
+  value = sha1(base64decode(
+    replace(replace(replace(
+      tls_locally_signed_cert.client.cert_pem,
+      "-----BEGIN CERTIFICATE-----", ""),
+      "-----END CERTIFICATE-----", ""),
+      "\n", "")
+  ))
 }
 
 output "ca_key_vault_certificate_id" {
