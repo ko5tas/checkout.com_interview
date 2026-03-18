@@ -1,0 +1,310 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      action:
+        description: "Action to perform"
+        required: true
+        type: choice
+        options:
+          - plan-only
+          - apply
+          - destroy
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_OIDC: true
+  TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  # --- Build Go binary (skip on destroy) ---
+  build-function:
+    name: Build Function App
+    runs-on: ubuntu-latest
+    if: inputs.action != 'destroy'
+    defaults:
+      run:
+        working-directory: function-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: function-app/go.mod
+
+      - name: Build Linux amd64 binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -ldflags="-s -w" -o handler .
+
+      - name: Package Function App
+        run: |
+          mkdir -p /tmp/func-release
+          cp handler /tmp/func-release/
+          cp host.json /tmp/func-release/
+          cp -r message /tmp/func-release/
+          cd /tmp/func-release && zip -r /tmp/function-app.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: function-app
+          path: /tmp/function-app.zip
+
+  # --- Terraform Plan ---
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    outputs:
+      plan-summary: ${{ steps.plan.outputs.summary }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9"
+          terraform_wrapper: false
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: terraform init -backend-config="key=checkout-${ENVIRONMENT}.tfstate"
+
+      - name: Terraform Plan
+        id: plan
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          DESTROY_FLAG=""
+          if [ "$ACTION" = "destroy" ]; then
+            DESTROY_FLAG="-destroy"
+          fi
+
+          terraform plan \
+            -var-file="environments/${ENVIRONMENT}.tfvars" \
+            -out=tfplan \
+            -input=false \
+            $DESTROY_FLAG \
+            -no-color 2>&1 | tee plan-output.txt
+
+          SUMMARY=$(grep -E "Plan:|No changes" plan-output.txt | tail -1)
+          echo "summary=${SUMMARY}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: tfplan
+
+      - name: Upload plan output
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-output
+          path: plan-output.txt
+
+      - name: Plan Summary
+        run: |
+          echo "## Terraform Plan — ${{ inputs.environment }} (${{ inputs.action }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -20 plan-output.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # --- AI Plan Analysis ---
+  ai-plan-analysis:
+    name: AI Plan Analysis
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    if: inputs.action != 'plan-only'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download plan output
+        uses: actions/download-artifact@v4
+        with:
+          name: plan-output
+
+      - name: Analyse plan
+        run: python3 scripts/analyze-plan.py plan-output.txt >> "$GITHUB_STEP_SUMMARY"
+
+  # --- Approval Gate (uses GitHub Environments) ---
+  approval:
+    name: Approval
+    runs-on: ubuntu-latest
+    needs: [terraform-plan, ai-plan-analysis]
+    if: inputs.action != 'plan-only'
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Approved
+        run: echo "Deployment approved for ${{ inputs.environment }}"
+
+  # --- Terraform Apply ---
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: approval
+    outputs:
+      function-app-name: ${{ steps.outputs.outputs.func-name }}
+      resource-group: ${{ steps.outputs.outputs.rg-name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9"
+          terraform_wrapper: false
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: terraform init -backend-config="key=checkout-${ENVIRONMENT}.tfstate"
+
+      - name: Download plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Capture outputs
+        id: outputs
+        if: inputs.action == 'apply'
+        run: |
+          echo "func-name=$(terraform output -raw function_app_name)" >> "$GITHUB_OUTPUT"
+          echo "rg-name=$(terraform output -raw resource_group_name)" >> "$GITHUB_OUTPUT"
+
+      - name: Generate audit log
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          ACTION: ${{ inputs.action }}
+          ACTOR: ${{ github.actor }}
+          PLAN_SUMMARY: ${{ needs.terraform-plan.outputs.plan-summary }}
+        run: |
+          cat > audit-log.json <<AUDIT
+          {
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "actor": "$ACTOR",
+            "environment": "$ENVIRONMENT",
+            "action": "$ACTION",
+            "plan_summary": "$PLAN_SUMMARY",
+            "result": "success",
+            "run_id": "${{ github.run_id }}"
+          }
+          AUDIT
+
+      - name: Upload audit log
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-deploy-${{ github.run_id }}
+          path: audit-log.json
+          retention-days: 90
+
+  # --- Deploy Function App code (apply only) ---
+  deploy-function:
+    name: Deploy Function Code
+    runs-on: ubuntu-latest
+    needs: [terraform-apply, build-function]
+    if: inputs.action == 'apply'
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download function artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: function-app
+
+      - name: Deploy to Function App
+        env:
+          FUNC_NAME: ${{ needs.terraform-apply.outputs.function-app-name }}
+          RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
+        run: |
+          az functionapp deployment source config-zip \
+            --name "$FUNC_NAME" \
+            --resource-group "$RG_NAME" \
+            --src function-app.zip
+
+  # --- Smoke Tests (apply only) ---
+  smoke-test:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [terraform-apply, deploy-function]
+    if: inputs.action == 'apply'
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify Function App is Running
+        env:
+          FUNC_NAME: ${{ needs.terraform-apply.outputs.function-app-name }}
+          RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
+        run: |
+          STATE=$(az functionapp show \
+            --name "$FUNC_NAME" \
+            --resource-group "$RG_NAME" \
+            --query "state" -o tsv)
+          echo "Function App state: $STATE"
+          [ "$STATE" = "Running" ] || { echo "FAIL: state is $STATE"; exit 1; }
+
+      - name: Verify functions deployed
+        env:
+          FUNC_NAME: ${{ needs.terraform-apply.outputs.function-app-name }}
+          RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
+        run: |
+          FUNCTIONS=$(az functionapp function list \
+            --name "$FUNC_NAME" \
+            --resource-group "$RG_NAME" \
+            --query "length(@)" -o tsv)
+          echo "Deployed functions: $FUNCTIONS"
+          [ "$FUNCTIONS" -ge 1 ] || { echo "FAIL: no functions deployed"; exit 1; }
+
+      - name: Smoke test summary
+        run: |
+          echo "## Smoke Tests Passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Function App: Running" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Functions: Deployed" >> "$GITHUB_STEP_SUMMARY"

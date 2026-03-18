@@ -1,0 +1,15 @@
+# Platform team owns all infrastructure
+*.tf                @ko5tas
+modules/            @ko5tas
+environments/       @ko5tas
+.github/workflows/  @ko5tas
+
+# Go function code
+function-app/       @ko5tas
+
+# Security-sensitive files require explicit review
+.checkov.yml        @ko5tas
+.tflint.hcl         @ko5tas
+.golangci.yml       @ko5tas
+scripts/            @ko5tas
+CODEOWNERS          @ko5tas

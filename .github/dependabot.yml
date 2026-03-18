@@ -1,0 +1,50 @@
+version: 2
+updates:
+  # Go dependencies
+  - package-ecosystem: "gomod"
+    directory: "/function-app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "go"
+    commit-message:
+      prefix: "deps(go):"
+
+  # Terratest Go dependencies
+  - package-ecosystem: "gomod"
+    directory: "/tests"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "go"
+      - "tests"
+    commit-message:
+      prefix: "deps(terratest):"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "deps(actions):"
+
+  # Terraform providers
+  - package-ecosystem: "terraform"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "terraform"
+    commit-message:
+      prefix: "deps(terraform):"

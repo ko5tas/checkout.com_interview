@@ -1,0 +1,211 @@
+name: AI Architect Advisor
+
+on:
+  schedule:
+    - cron: "17 10 * * 0" # Sunday 10:17 UTC (off-minute to avoid fleet congestion)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  security-events: read
+
+jobs:
+  advise:
+    name: AI Architecture Review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: function-app/go.mod
+
+      # --- Gather dependency versions ---
+      - name: Collect current versions
+        run: |
+          echo "## Current Dependency Versions" > versions.md
+          echo "" >> versions.md
+          echo "| Dependency | Current Version |" >> versions.md
+          echo "|-----------|----------------|" >> versions.md
+
+          TF_AZURERM=$(grep 'version.*=.*"~>' versions.tf | head -1 | grep -oE '"[^"]+"' | tr -d '"')
+          echo "| azurerm provider | $TF_AZURERM |" >> versions.md
+
+          GO_VER=$(grep '^go ' function-app/go.mod | awk '{print $2}')
+          echo "| Go | $GO_VER |" >> versions.md
+
+          TF_VER=$(grep 'required_version' versions.tf | grep -oE '"[^"]+"' | tr -d '"')
+          echo "| Terraform | $TF_VER |" >> versions.md
+
+          echo "" >> versions.md
+
+      # --- Fetch latest releases ---
+      - name: Fetch latest dependency releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "## Latest Available Versions" > latest.md
+          echo "" >> latest.md
+          echo "| Dependency | Latest |" >> latest.md
+          echo "|-----------|--------|" >> latest.md
+
+          for REPO in hashicorp/terraform hashicorp/terraform-provider-azurerm golangci/golangci-lint aquasecurity/trivy bridgecrewio/checkov; do
+            LATEST=$(gh api "repos/$REPO/releases/latest" --jq '.tag_name' 2>/dev/null || echo "unknown")
+            echo "| $REPO | $LATEST |" >> latest.md
+          done
+
+          echo "" >> latest.md
+
+      # --- Fetch azurerm changelog ---
+      - name: Fetch provider changelog highlights
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "## azurerm Provider Recent Changes" > changelog.md
+          echo "" >> changelog.md
+          gh api repos/hashicorp/terraform-provider-azurerm/releases \
+            --jq '.[0:3][] | "### " + .tag_name + "\n" + (.body | split("\n")[0:15] | join("\n")) + "\n"' \
+            >> changelog.md 2>/dev/null || echo "Failed to fetch" >> changelog.md
+
+      # --- Run govulncheck ---
+      - name: Security scan
+        working-directory: function-app
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          echo "## Go Vulnerability Report" > /tmp/vulncheck.md
+          echo "" >> /tmp/vulncheck.md
+          govulncheck ./... >> /tmp/vulncheck.md 2>&1 || true
+
+      # --- Check repo health ---
+      - name: Repo health check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "## Repository Health" > repo-health.md
+          echo "" >> repo-health.md
+
+          BP=$(gh api repos/ko5tas/checkout.com_interview/branches/main/protection \
+            --jq '.required_pull_request_reviews.required_approving_review_count' 2>/dev/null || echo "not set")
+          echo "- Branch protection (required reviewers): $BP" >> repo-health.md
+
+          ALERTS=$(gh api repos/ko5tas/checkout.com_interview/dependabot/alerts \
+            --jq '[.[] | select(.state=="open")] | length' 2>/dev/null || echo "0")
+          echo "- Open Dependabot alerts: $ALERTS" >> repo-health.md
+
+          SECRETS=$(gh api repos/ko5tas/checkout.com_interview/secret-scanning/alerts \
+            --jq '[.[] | select(.state=="open")] | length' 2>/dev/null || echo "0")
+          echo "- Open secret scanning alerts: $SECRETS" >> repo-health.md
+
+          SKIPS=$(grep -c "^  - CKV" .checkov.yml 2>/dev/null || echo "0")
+          echo "- Checkov skipped checks: $SKIPS (review periodically)" >> repo-health.md
+
+          echo "" >> repo-health.md
+
+      # --- Gather codebase context ---
+      - name: Gather codebase context
+        run: |
+          echo "### versions.tf" > codebase.md
+          cat versions.tf >> codebase.md
+          echo "" >> codebase.md
+          echo "### .checkov.yml" >> codebase.md
+          cat .checkov.yml >> codebase.md
+          echo "" >> codebase.md
+          echo "### go.mod" >> codebase.md
+          cat function-app/go.mod >> codebase.md
+
+      # --- Call Gemini for AI analysis ---
+      - name: AI analysis
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "*Skipped — GEMINI_API_KEY not configured*" > ai-report.md
+            exit 0
+          fi
+
+          # Combine context (truncate to avoid token limits)
+          head -200 versions.md latest.md changelog.md /tmp/vulncheck.md repo-health.md codebase.md > context.txt
+
+          python3 - <<'PYSCRIPT'
+          import json, os, urllib.request
+
+          with open("context.txt") as f:
+              context = f.read()
+
+          prompt = f"""You are a senior SRE reviewing an Azure infrastructure codebase weekly.
+
+          Context:
+          {context}
+
+          Provide a structured report:
+          1. **Critical Updates** — security vulns, deprecated features in use
+          2. **Recommended Updates** — version bumps with meaningful improvements
+          3. **Architecture Improvements** — new Azure features/patterns to adopt
+          4. **Cost Optimisation** — ways to reduce Azure spend
+          5. **Repo Health** — security posture and CI/CD hygiene assessment
+
+          For each finding: what to change, why, effort estimate (small/medium/large).
+          Be specific and actionable."""
+
+          body = json.dumps({
+              "contents": [{"parts": [{"text": prompt}]}],
+              "generationConfig": {"maxOutputTokens": 2000, "temperature": 0.3},
+          }).encode()
+
+          api_key = os.environ["GEMINI_API_KEY"]
+          url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+          req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+
+          try:
+              with urllib.request.urlopen(req, timeout=60) as resp:
+                  result = json.loads(resp.read())
+                  text = result["candidates"][0]["content"]["parts"][0]["text"]
+                  with open("ai-report.md", "w") as f:
+                      f.write(text)
+          except Exception as e:
+              with open("ai-report.md", "w") as f:
+                  f.write(f"*AI analysis failed: {e}*")
+          PYSCRIPT
+
+      # --- Create or update GitHub Issue ---
+      - name: Post report as GitHub Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "# Weekly AI Architecture Review"
+            echo ""
+            echo "*Generated automatically — $(date -u +%Y-%m-%d)*"
+            echo ""
+            cat versions.md
+            cat latest.md
+            cat /tmp/vulncheck.md
+            cat repo-health.md
+            echo "## AI Analysis"
+            echo ""
+            cat ai-report.md
+          } > report.md
+
+          EXISTING=$(gh issue list --label "ai-advisor" --state open --json number --jq '.[0].number // empty')
+
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body-file report.md
+            echo "Updated existing issue #$EXISTING"
+          else
+            gh issue create \
+              --title "AI Architecture Review — $(date -u +%Y-%m-%d)" \
+              --body-file report.md \
+              --label "ai-advisor,improvement"
+          fi
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-advisor-${{ github.run_id }}
+          path: |
+            versions.md
+            latest.md
+            repo-health.md
+            ai-report.md
+          retention-days: 90

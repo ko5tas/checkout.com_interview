@@ -1,0 +1,185 @@
+name: Scheduled Destroy
+
+on:
+  schedule:
+    # 02:00 UK time — two entries to handle GMT/BST transition
+    - cron: "0 2 * * 1-5"  # 02:00 UTC (Nov-Mar = 02:00 GMT)
+    - cron: "0 1 * * 1-5"  # 01:00 UTC (Mar-Oct = 02:00 BST)
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to destroy"
+        required: true
+        type: choice
+        options:
+          - dev
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_OIDC: true
+  TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ENVIRONMENT: dev
+
+jobs:
+  safety-checks:
+    name: Pre-destroy Safety Checks
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - name: Never destroy prod automatically
+        run: |
+          if [ "$ENVIRONMENT" = "prod" ]; then
+            echo "::error::Refusing to auto-destroy prod. Use deploy.yml with manual approval."
+            exit 1
+          fi
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Check for active requests
+        id: check
+        run: |
+          RG_EXISTS=$(az group exists --name "rg-checkout-dev")
+          if [ "$RG_EXISTS" = "false" ]; then
+            echo "Resource group doesn't exist — nothing to destroy"
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          FUNC_ID=$(az functionapp show \
+            --name "func-checkout-dev" \
+            --resource-group "rg-checkout-dev" \
+            --query "id" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$FUNC_ID" ]; then
+            echo "Function App not found — proceeding with destroy"
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          EXEC_COUNT=$(az monitor metrics list \
+            --resource "$FUNC_ID" \
+            --metric "FunctionExecutionCount" \
+            --interval PT30M \
+            --query "value[0].timeseries[0].data[-1].total" \
+            -o tsv 2>/dev/null || echo "0")
+
+          if [ "${EXEC_COUNT:-0}" -gt 0 ]; then
+            echo "::warning::Function App had $EXEC_COUNT executions in the last 30 minutes"
+          fi
+
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
+  destroy:
+    name: Terraform Destroy (dev)
+    runs-on: ubuntu-latest
+    needs: safety-checks
+    if: needs.safety-checks.outputs.proceed == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9"
+          terraform_wrapper: false
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Break stale state lock if needed
+        run: |
+          LOCK_INFO=$(az storage blob show \
+            --account-name "sttfstatede4c37db" \
+            --container-name "tfstate" \
+            --name "checkout-dev.tfstate" \
+            --query "properties.lease.status" \
+            -o tsv --auth-mode login 2>/dev/null || echo "unlocked")
+          if [ "$LOCK_INFO" = "locked" ]; then
+            echo "::warning::State file is locked — breaking stale lease"
+            az storage blob lease break \
+              --blob-name "checkout-dev.tfstate" \
+              --container-name "tfstate" \
+              --account-name "sttfstatede4c37db" \
+              --auth-mode login
+          fi
+
+      - name: Terraform Init
+        run: terraform init -backend-config="key=checkout-dev.tfstate"
+
+      - name: Terraform Destroy
+        id: destroy
+        run: |
+          terraform destroy \
+            -var-file="environments/dev.tfvars" \
+            -auto-approve \
+            -no-color 2>&1 | tee destroy-output.txt
+
+      - name: Generate audit log
+        if: always()
+        env:
+          DESTROY_RESULT: ${{ steps.destroy.outcome }}
+          ACTOR: ${{ github.actor }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          REASON="manual"
+          if [ "$EVENT" = "schedule" ]; then
+            REASON="scheduled-nightly"
+          fi
+
+          cat > audit-log.json <<AUDIT
+          {
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "actor": "$ACTOR",
+            "environment": "dev",
+            "action": "destroy",
+            "reason": "$REASON",
+            "result": "$DESTROY_RESULT",
+            "run_id": "${{ github.run_id }}"
+          }
+          AUDIT
+
+      - name: Upload audit log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-destroy-${{ github.run_id }}
+          path: audit-log.json
+          retention-days: 90
+
+  alert-on-failure:
+    name: Alert on Failure
+    runs-on: ubuntu-latest
+    needs: destroy
+    if: failure()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue create \
+            --title "Scheduled destroy failed — $(date -u +%Y-%m-%d)" \
+            --body "The nightly dev environment destroy failed. [View run]($RUN_URL)" \
+            --label "ops,urgent"

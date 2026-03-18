@@ -13,15 +13,14 @@ provider "tls" {}
 
 provider "random" {}
 
-# Remote state backend configuration.
-# Uncomment after running scripts/bootstrap-state.sh to provision the backend.
-#
-# terraform {
-#   backend "azurerm" {
-#     resource_group_name  = "rg-tfstate-uksouth"
-#     storage_account_name = "sttfstate<unique>"
-#     container_name       = "tfstate"
-#     key                  = "checkout-internal-api.terraform.tfstate"
-#     use_oidc             = true  # For GitHub Actions OIDC auth
-#   }
-# }
+# Remote state backend.
+# The key is passed via -backend-config="key=checkout-${ENV}.tfstate" at init time,
+# giving each environment its own state file in the same container.
+terraform {
+  backend "azurerm" {
+    resource_group_name  = "rg-tfstate-uksouth"
+    storage_account_name = "sttfstatede4c37db"
+    container_name       = "tfstate"
+    use_oidc             = true
+  }
+}
