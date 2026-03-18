@@ -213,36 +213,112 @@ terraform destroy -var-file=environments/dev.tfvars
 
 ## OIDC Configuration for GitHub Actions
 
-1. **Create an Azure AD App Registration:**
-   ```bash
-   az ad app create --display-name "github-actions-checkout-platform"
-   ```
+GitHub Actions authenticates to Azure using OpenID Connect (OIDC) — no long-lived secrets are stored. Instead, GitHub requests a short-lived token from Azure AD using a federated identity credential that trusts the GitHub OIDC provider.
 
-2. **Create a federated credential:**
-   ```bash
-   az ad app federated-credential create \
-     --id <APP_OBJECT_ID> \
-     --parameters '{
-       "name": "github-main",
-       "issuer": "https://token.actions.githubusercontent.com",
-       "subject": "repo:ko5tas/checkout.com_interview:ref:refs/heads/main",
-       "audiences": ["api://AzureADTokenExchange"]
-     }'
-   ```
+### Step 1: Create an Azure AD App Registration
 
-3. **Create a Service Principal and assign roles:**
-   ```bash
-   az ad sp create --id <APP_ID>
-   az role assignment create \
-     --assignee <APP_ID> \
-     --role Contributor \
-     --scope /subscriptions/<SUBSCRIPTION_ID>
-   ```
+This is the identity that GitHub Actions will authenticate as.
 
-4. **Add GitHub secrets:**
-   - `AZURE_CLIENT_ID` — App registration client ID
-   - `AZURE_SUBSCRIPTION_ID` — Azure subscription ID
-   - `AZURE_TENANT_ID` — Azure AD tenant ID
+```bash
+az ad app create --display-name "github-actions-checkout-platform" \
+  --query "{appId:appId, objectId:id}" -o json
+```
+
+Save the `appId` (client ID) and `objectId` (needed for federated credential commands).
+
+### Step 2: Create Federated Credentials
+
+Federated credentials tell Azure AD which GitHub workflows are allowed to authenticate as this app. Each credential is scoped to a specific trigger type — this prevents unauthorized repos or workflows from impersonating the identity.
+
+**For pushes to `main` and tagged releases:**
+
+```bash
+az ad app federated-credential create \
+  --id <APP_OBJECT_ID> \
+  --parameters '{
+    "name": "github-main",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "subject": "repo:ko5tas/checkout.com_interview:ref:refs/heads/main",
+    "audiences": ["api://AzureADTokenExchange"]
+  }'
+```
+
+Why: The Terraform CI workflow runs on pushes to `main`, and the release workflow triggers on `v*` tags (which resolve to the main branch). Both need this credential.
+
+**For pull requests** (Terraform Plan):
+
+```bash
+az ad app federated-credential create \
+  --id <APP_OBJECT_ID> \
+  --parameters '{
+    "name": "github-pr",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "subject": "repo:ko5tas/checkout.com_interview:pull_request",
+    "audiences": ["api://AzureADTokenExchange"]
+  }'
+```
+
+Why: The `terraform plan` job runs on PRs to show infrastructure changes before merging. Without this credential, PR workflows can't authenticate to Azure.
+
+### Step 3: Create a Service Principal and Assign Roles
+
+The app registration is an identity — the service principal makes it usable in Azure RBAC, and the role assignment grants it permissions.
+
+```bash
+# Create the service principal (makes the app usable in Azure RBAC)
+az ad sp create --id <APP_ID>
+
+# Grant Contributor on the target subscription
+az role assignment create \
+  --assignee <APP_ID> \
+  --role Contributor \
+  --scope /subscriptions/<SUBSCRIPTION_ID>
+```
+
+Why Contributor: Terraform needs to create, modify, and delete resources. Contributor grants this without allowing role assignment changes (which would require Owner). For production, consider a custom role with only the specific permissions needed.
+
+### Step 4: Set GitHub Repository Secrets
+
+These secrets are referenced in the workflow files via `${{ secrets.AZURE_CLIENT_ID }}` etc. They are never exposed in logs.
+
+```bash
+gh secret set AZURE_CLIENT_ID --body "<APP_ID>"
+gh secret set AZURE_SUBSCRIPTION_ID --body "<SUBSCRIPTION_ID>"
+gh secret set AZURE_TENANT_ID --body "<TENANT_ID>"
+```
+
+| Secret | What It Is | Where It Comes From |
+|--------|-----------|-------------------|
+| `AZURE_CLIENT_ID` | App registration's Application (client) ID | `az ad app create` output |
+| `AZURE_SUBSCRIPTION_ID` | Target Azure subscription | `az account show --query id` |
+| `AZURE_TENANT_ID` | Azure AD tenant | `az account show --query tenantId` |
+
+### How OIDC Works in the Workflow
+
+```yaml
+# The workflow requests a token from Azure AD
+- uses: azure/login@v2
+  with:
+    client-id: ${{ secrets.AZURE_CLIENT_ID }}
+    tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+    subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+```
+
+GitHub sends its OIDC token to Azure AD → Azure AD validates the token against the federated credential (checking issuer, subject, audience) → Azure AD issues a short-lived access token → Terraform uses that token via `ARM_USE_OIDC=true`.
+
+### Teardown
+
+To remove the OIDC configuration:
+
+```bash
+# Delete the app registration (also removes SP and federated credentials)
+az ad app delete --id <APP_ID>
+
+# Remove GitHub secrets
+gh secret delete AZURE_CLIENT_ID
+gh secret delete AZURE_SUBSCRIPTION_ID
+gh secret delete AZURE_TENANT_ID
+```
 
 ## Assumptions
 
