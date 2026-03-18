@@ -104,6 +104,8 @@ jobs:
           ENVIRONMENT: ${{ inputs.environment }}
           ACTION: ${{ inputs.action }}
         run: |
+          set -o pipefail
+
           DESTROY_FLAG=""
           if [ "$ACTION" = "destroy" ]; then
             DESTROY_FLAG="-destroy"
