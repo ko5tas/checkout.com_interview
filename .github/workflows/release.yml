@@ -1,0 +1,300 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  id-token: write
+  contents: write
+  security-events: write
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_OIDC: true
+  TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  # ============================================================
+  # QUALITY GATES — all must pass before build/release
+  # ============================================================
+
+  # --- Go quality gate ---
+  go-quality:
+    name: Go Quality Gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: function-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Go Build
+        run: go build -o handler .
+
+      - name: Go Vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: function-app
+
+      - name: Go Tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Coverage Report
+        run: go tool cover -func=coverage.out
+
+  # --- Go SAST: CodeQL ---
+  go-codeql:
+    name: Go CodeQL SAST
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: go
+      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:go"
+
+  # --- Go SAST: govulncheck ---
+  go-vulncheck:
+    name: Go Vulnerability Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: function-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+  # --- Go DAST: runtime security probes ---
+  go-dast:
+    name: Go DAST Probes
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: function-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build and start server
+        run: |
+          go build -o handler .
+          ./handler &
+          sleep 2
+
+      - name: DAST - Oversized payload (expect 413)
+        run: |
+          PAYLOAD=$(python3 -c "print('{\"message\":\"' + 'A'*2097152 + '\"}')")
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST http://localhost:8080/api/message \
+            -H "Content-Type: application/json" -d "$PAYLOAD")
+          [ "$STATUS" = "413" ] || { echo "FAIL: expected 413, got $STATUS"; exit 1; }
+
+      - name: DAST - Method tampering (expect 405)
+        run: |
+          for M in GET PUT DELETE PATCH; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X "$M" http://localhost:8080/api/message)
+            [ "$STATUS" = "405" ] || { echo "FAIL: $M expected 405, got $STATUS"; exit 1; }
+          done
+
+      - name: DAST - Content-Type enforcement (expect 415)
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST http://localhost:8080/api/message \
+            -H "Content-Type: text/xml" -d '<msg>test</msg>')
+          [ "$STATUS" = "415" ] || { echo "FAIL: expected 415, got $STATUS"; exit 1; }
+
+      - name: DAST - Unknown fields rejected (expect 400)
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST http://localhost:8080/api/message \
+            -H "Content-Type: application/json" \
+            -d '{"message":"test","injected":"field"}')
+          [ "$STATUS" = "400" ] || { echo "FAIL: expected 400, got $STATUS"; exit 1; }
+
+      - name: Stop server
+        if: always()
+        run: pkill handler || true
+
+  # --- Terraform quality gate ---
+  terraform-quality:
+    name: Terraform Quality Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9"
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: TFLint
+        uses: terraform-linters/setup-tflint@v4
+      - run: |
+          tflint --init
+          tflint --recursive
+
+      - name: Trivy IaC Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: .
+          exit-code: 1
+          severity: HIGH,CRITICAL
+
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform
+          soft_fail: false
+
+      - name: Terraform Test
+        run: terraform test
+
+  # ============================================================
+  # BUILD — only runs after ALL gates pass
+  # ============================================================
+
+  build:
+    name: Build Artifacts
+    runs-on: ubuntu-latest
+    needs: [go-quality, go-codeql, go-vulncheck, go-dast, terraform-quality]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build Linux amd64 binary
+        working-directory: function-app
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -ldflags="-s -w" -o handler .
+
+      - name: Package Function App
+        run: |
+          mkdir -p release
+          cp function-app/handler release/
+          cp function-app/host.json release/
+          cp -r function-app/message release/
+          cd release && zip -r ../function-app-linux-amd64.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: function-app-linux-amd64
+          path: function-app-linux-amd64.zip
+
+  # ============================================================
+  # RELEASE — creates GitHub Release with rollback safety
+  # ============================================================
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for rollback reference
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: function-app-linux-amd64
+
+      - name: Determine previous release
+        id: prev_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PREV=$(gh release list --limit 1 --exclude-drafts --exclude-pre-releases \
+            --json tagName --jq '.[0].tagName // empty')
+          echo "tag=${PREV}" >> "$GITHUB_OUTPUT"
+          echo "Previous release: ${PREV:-none}"
+
+      - name: Create GitHub Release
+        id: create_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+          PREV_TAG: ${{ steps.prev_release.outputs.tag }}
+        run: |
+          ROLLBACK_NOTE=""
+          if [ -n "$PREV_TAG" ]; then
+            ROLLBACK_NOTE="## Rollback\nTo rollback to the previous release:\n\`\`\`bash\n# 1. Delete this release (non-destructive to other resources)\ngh release delete $TAG_NAME --yes\ngit push --delete origin $TAG_NAME\n\n# 2. Redeploy the previous version\ngh release download $PREV_TAG -D /tmp/rollback\nterraform apply -var-file=environments/dev.tfvars\n\`\`\`\nPrevious release: [$PREV_TAG](../../releases/tag/$PREV_TAG)"
+          fi
+
+          gh release create "$TAG_NAME" \
+            function-app-linux-amd64.zip \
+            --title "$TAG_NAME" \
+            --generate-notes \
+            --notes-start-tag "${PREV_TAG:-}" || {
+              echo "::error::Release creation failed. No cleanup needed — tag exists but no release was created."
+              exit 1
+            }
+
+  # ============================================================
+  # ROLLBACK — runs ONLY if release job fails
+  # ============================================================
+
+  rollback:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [build, release]
+    if: failure() && needs.build.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clean up failed release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          echo "::warning::Release failed. Cleaning up partial release artifacts."
+
+          # Delete the draft/failed release if it was partially created
+          gh release delete "$TAG_NAME" --yes 2>/dev/null || echo "No release to delete"
+
+          # Do NOT delete the git tag — it serves as an audit trail
+          # The tag remains pointing to the commit, but no release exists
+          echo "Tag $TAG_NAME preserved for audit. No GitHub Release was published."
+          echo ""
+          echo "To retry: push the tag again after fixing the issue:"
+          echo "  git tag -d $TAG_NAME"
+          echo "  git push --delete origin $TAG_NAME"
+          echo "  git tag $TAG_NAME"
+          echo "  git push origin $TAG_NAME"

@@ -1,0 +1,32 @@
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+    - gocyclo
+    - revive
+    - misspell
+    - unconvert
+    - unparam
+    - bodyclose
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  gosec:
+    excludes: []
+  revive:
+    rules:
+      - name: exported
+        disabled: false
+
+run:
+  timeout: 5m
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
