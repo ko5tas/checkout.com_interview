@@ -366,6 +366,26 @@ gh secret delete AZURE_TENANT_ID
 
 > Destroy resources promptly after assessment review to minimise costs.
 
+### Cost Control: Decision Log
+
+1. **Free Trial spending limit blocked provisioning.** Azure Free Trial subscriptions have a spending limit that prevents creating Consumption plan (Dynamic VM) resources — Azure returns a misleading `401 Unauthorized` / `Dynamic VMs quota: 0` error. The fix was upgrading the subscription from Free Trial to Pay-As-You-Go, which removed the spending limit while preserving the remaining £147.77 credit.
+
+2. **Budget set to exact remaining credits.** We created an Azure budget (`free-trial-guard`) set to £147.77 with email notifications at 80% and 100% thresholds via the Cost Management REST API. This prevents silent overspend.
+
+3. **Daily Budget Guard workflow** (`budget-guard.yml`). Runs daily at 07:23 UTC and checks two conditions:
+   - **Credit expiry date** — configured via `CREDIT_EXPIRY_DATE` repo variable (default: 2026-04-17, 30 days from signup)
+   - **Cumulative spend** — queries the Cost Management API and compares against the budget amount
+
+   If either condition is true, the workflow automatically:
+   - Destroys all dev infrastructure (`terraform destroy`)
+   - Sets the budget to £0.01 (Azure minimum)
+   - Cleans up the state backend storage account if no other environments remain
+   - Opens a GitHub Issue documenting the teardown with full audit trail
+
+   This ensures **zero accidental charges** after credits expire or run out, even if someone forgets to manually destroy resources.
+
+4. **Nightly schedule destroys state backend too.** The `schedule.yml` nightly destroy not only runs `terraform destroy` on application resources but also cleans up the dev state blob and, if no other environments exist, deletes the state storage account itself — eliminating all residual cost.
+
 ## AI Usage & Critique
 
 This implementation was built with Claude (Anthropic) as an AI coding assistant. Below is a summary of the collaboration and critique.
