@@ -7,18 +7,41 @@ resource "random_string" "sa_suffix" {
 # --- Storage Account ---
 
 resource "azurerm_storage_account" "function" {
-  name                          = "stfunc${replace(var.name_prefix, "-", "")}${random_string.sa_suffix.result}"
-  resource_group_name           = var.resource_group_name
-  location                      = var.location
-  account_tier                  = "Standard"
-  account_replication_type      = "LRS"
-  min_tls_version               = "TLS1_2"
-  public_network_access_enabled = false
-  tags                          = var.tags
+  name                            = "stfunc${replace(var.name_prefix, "-", "")}${random_string.sa_suffix.result}"
+  resource_group_name             = var.resource_group_name
+  location                        = var.location
+  account_tier                    = "Standard"
+  account_replication_type        = "LRS"
+  min_tls_version                 = "TLS1_2"
+  public_network_access_enabled   = false
+  allow_nested_items_to_be_public = false
+  tags                            = var.tags
 
   network_rules {
     default_action = "Deny"
     bypass         = ["AzureServices"]
+  }
+
+  blob_properties {
+    delete_retention_policy {
+      days = 7
+    }
+  }
+
+  sas_policy {
+    expiration_period = "00.01:00:00" # 1 hour max SAS token validity
+  }
+}
+
+resource "azurerm_storage_account_queue_properties" "function" {
+  storage_account_id = azurerm_storage_account.function.id
+
+  logging {
+    delete                = true
+    read                  = true
+    write                 = true
+    version               = "1.0"
+    retention_policy_days = 7
   }
 }
 

@@ -1,0 +1,19 @@
+skip-check:
+  # Storage Account uses shared key because Azure Functions Consumption plan (Y1)
+  # requires storage_account_access_key. Managed Identity-based storage is only
+  # supported on Premium/Dedicated plans.
+  - CKV2_AZURE_40 # Ensure storage account is not configured with Shared Key authorization
+
+  # Consumption plan (Y1) does not support zone redundancy or minimum instance counts.
+  # Production would use Premium plan with these features enabled.
+  - CKV_AZURE_225 # Ensure the App Service Plan is zone redundant
+  - CKV_AZURE_212 # Ensure App Service has a minimum number of instances for failover
+
+  # LRS is intentional for Function App state storage in a dev/assessment environment.
+  # Production would use GRS/ZRS.
+  - CKV_AZURE_206 # Ensure that Storage Accounts use replication
+
+  # Queue logging configured via azurerm_storage_account_queue_properties resource
+  # (inline queue_properties block deprecated in azurerm v4). Checkov doesn't detect
+  # the separate resource yet.
+  - CKV_AZURE_33 # Ensure Storage logging is enabled for Queue service
