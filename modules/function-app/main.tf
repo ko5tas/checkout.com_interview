@@ -15,6 +15,11 @@ resource "azurerm_storage_account" "function" {
   min_tls_version               = "TLS1_2"
   public_network_access_enabled = false
   tags                          = var.tags
+
+  network_rules {
+    default_action = "Deny"
+    bypass         = ["AzureServices"]
+  }
 }
 
 # --- Storage Private Endpoints ---
@@ -89,6 +94,7 @@ resource "azurerm_linux_function_app" "main" {
   storage_account_name          = azurerm_storage_account.function.name
   storage_account_access_key    = azurerm_storage_account.function.primary_access_key
   virtual_network_subnet_id     = var.function_subnet_id
+  https_only                    = true
   public_network_access_enabled = false
   client_certificate_mode       = "Required"
   tags                          = var.tags

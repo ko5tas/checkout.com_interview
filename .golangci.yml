@@ -1,9 +1,10 @@
+version: "2"
+
 linters:
+  default: standard
   enable:
     - errcheck
-    - gosimple
     - govet
-    - ineffassign
     - staticcheck
     - unused
     - gosec
@@ -14,15 +15,13 @@ linters:
     - unparam
     - bodyclose
 
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-  gosec:
-    excludes: []
-  revive:
-    rules:
-      - name: exported
-        disabled: false
+  settings:
+    gocyclo:
+      min-complexity: 15
+    revive:
+      rules:
+        - name: exported
+          disabled: false
 
 run:
   timeout: 5m
