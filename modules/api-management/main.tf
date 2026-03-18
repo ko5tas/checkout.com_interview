@@ -6,7 +6,10 @@ resource "azurerm_api_management" "main" {
   publisher_email               = var.publisher_email
   sku_name                      = "Developer_1"
   virtual_network_type          = "Internal"
-  public_network_access_enabled = false
+  # Note: public_network_access cannot be disabled during initial creation
+  # (Azure API limitation: ActivateServiceWithPrivateEndpointAccessNotAllowed).
+  # Disable it in a subsequent apply or via az cli post-provisioning.
+  public_network_access_enabled = true
   tags                          = var.tags
 
   virtual_network_configuration {
