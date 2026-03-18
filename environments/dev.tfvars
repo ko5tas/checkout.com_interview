@@ -2,7 +2,7 @@
 # in CI/CD (from AZURE_SUBSCRIPTION_ID secret) or locally via environment.
 project           = "checkout"
 environment       = "dev"
-location          = "uksouth"
+location          = "westeurope"
 alert_email       = "platform-dev@checkout.com"
 allowed_client_cn = "api-client.internal.checkout.com"
 
