@@ -322,6 +322,7 @@ gh secret delete AZURE_TENANT_ID
 
 ## Assumptions
 
+- **Azure Entra ID (identity) setup is simplified** — a single app registration with Contributor on the default subscription. Production would implement a proper Entra ID design: dedicated subscriptions per environment, custom RBAC roles scoped to specific resource groups, separate app registrations per workflow, and Entra ID groups for access governance. This was a conscious time/complexity trade-off for the assessment.
 - Self-signed certificates only; no custom domain or commercial certificates purchased
 - APIM Developer tier for full mTLS and VNet injection (production would evaluate Premium tier)
 - Function App Consumption plan (Y1) for cost; Premium plan needed for always-on VNet integration in production
