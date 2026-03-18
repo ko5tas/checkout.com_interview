@@ -166,6 +166,48 @@ jobs:
           path: audit-log.json
           retention-days: 90
 
+  cleanup-state-backend:
+    name: Clean Up State Backend
+    runs-on: ubuntu-latest
+    needs: destroy
+    if: success()
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Delete state file and backend resources
+        run: |
+          # Delete the dev state blob (not the whole container — prod state may live here too)
+          echo "Deleting dev state blob..."
+          az storage blob delete \
+            --account-name "sttfstatede4c37db" \
+            --container-name "tfstate" \
+            --name "checkout-dev.tfstate" \
+            --auth-mode login 2>/dev/null || echo "State blob already deleted"
+
+          # Check if any other state files remain in the container
+          BLOB_COUNT=$(az storage blob list \
+            --account-name "sttfstatede4c37db" \
+            --container-name "tfstate" \
+            --auth-mode login \
+            --query "length([?ends_with(name, '.tfstate')])" \
+            -o tsv 2>/dev/null || echo "0")
+
+          if [ "$BLOB_COUNT" = "0" ]; then
+            echo "No other state files remain — deleting state backend resources..."
+            az group delete \
+              --name "rg-tfstate-uksouth" \
+              --yes \
+              --no-wait
+            echo "State backend resource group deletion initiated (async)."
+          else
+            echo "Other state files still present ($BLOB_COUNT) — keeping state backend."
+          fi
+
   alert-on-failure:
     name: Alert on Failure
     runs-on: ubuntu-latest
