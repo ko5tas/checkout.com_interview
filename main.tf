@@ -93,7 +93,6 @@ module "api_management" {
   publisher_email       = var.alert_email
   subnet_id             = module.networking.subnet_ids["apim"]
   function_app_hostname = module.function_app.function_app_default_hostname
-  function_app_id       = module.function_app.function_app_id
   ca_cert_pem           = module.certificates.ca_cert_pem
   allowed_client_cn     = var.allowed_client_cn
   tags                  = local.common_tags

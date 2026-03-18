@@ -34,11 +34,6 @@ variable "function_app_hostname" {
   type        = string
 }
 
-variable "function_app_id" {
-  description = "Resource ID of the Function App"
-  type        = string
-}
-
 variable "ca_cert_pem" {
   description = "PEM-encoded CA certificate for mTLS validation"
   type        = string
