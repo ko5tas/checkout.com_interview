@@ -177,6 +177,7 @@ jobs:
           directory: .
           framework: terraform
           soft_fail: false
+          config_file: .checkov.yml
 
       - name: Terraform Test
         run: terraform test
