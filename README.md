@@ -111,7 +111,7 @@ Two layers of certificate validation protect against compromised internal servic
 |--------|-----------|
 | Go custom handler | Systems engineering signal; performant; type-safe |
 | APIM Developer tier | Full VNet injection (`Internal` mode); native mTLS policy; enterprise pattern |
-| UK South region | Checkout.com is UK-based |
+| West Europe region | Originally UK South (Checkout.com is UK-based); migrated due to free-trial quota limitations — see Decision Log #4 |
 | tfvars (not workspaces) | Explicit, readable environment separation |
 | Consumption plan (Y1) | Cost-effective for assessment; production would use Premium for always-on VNet |
 
@@ -346,7 +346,7 @@ gh secret delete AZURE_TENANT_ID
 - Self-signed certificates only; no custom domain or commercial certificates purchased
 - APIM Developer tier for full mTLS and VNet injection (production would evaluate Premium tier)
 - Function App Consumption plan (Y1) for cost; Premium plan needed for always-on VNet integration in production
-- Single region (UK South); multi-region not in scope
+- Single region (West Europe); multi-region not in scope
 - Remote state documented but not pre-provisioned (run `bootstrap-state.sh` first)
 - Python/Node/Java alternatives considered; Go chosen for type safety and performance
 - `authLevel: "anonymous"` on Function App HTTP trigger because authentication is handled by mTLS at both APIM and Function App layers
@@ -384,7 +384,14 @@ gh secret delete AZURE_TENANT_ID
 
    This ensures **zero accidental charges** after credits expire or run out, even if someone forgets to manually destroy resources.
 
-4. **Nightly schedule destroys state backend too.** The `schedule.yml` nightly destroy not only runs `terraform destroy` on application resources but also cleans up the dev state blob and, if no other environments exist, deletes the state storage account itself — eliminating all residual cost.
+4. **Region migration from UK South to West Europe.** After upgrading to Pay-As-You-Go, the subscription's internal offer type change had not fully propagated (both `offerType` and `spendingLimit` returned `null` from `az account show`). This meant the Dynamic VM (Consumption plan) quota remained at 0 in UK South, and quota increase requests were blocked with _"Your free trial subscription isn't eligible for a quota increase"_. Rather than wait 24-48 hours for Azure's backend replication, we pivoted the dev environment to `westeurope` — a region with broader default quota allocation for free-tier subscriptions. The migration required:
+   - Updating `environments/dev.tfvars` to `location = "westeurope"`
+   - Running `terraform destroy` on the existing UK South infrastructure
+   - Fixing the azurerm provider to set `prevent_deletion_if_contains_resources = false` in the `resource_group` feature block — Azure auto-creates Smart Detection alert rules and action groups inside resource groups containing Application Insights, and these orphaned resources block Terraform's resource group deletion
+   - **Manual step:** Deleting the `NetworkWatcher_uksouth` resource from the `NetworkWatcherRG` resource group via the Azure Portal. This is an Azure-auto-created free diagnostic resource that is not managed by Terraform and was no longer needed after the region move. The `NetworkWatcherRG` resource group itself was also deleted.
+   - The Terraform state backend (`rg-tfstate-uksouth` / `sttfstatede4c37db`) was intentionally kept in UK South — it stores state files for all environments and incurs negligible cost (~£0.01/month for blob storage).
+
+5. **Nightly schedule destroys state backend too.** The `schedule.yml` nightly destroy not only runs `terraform destroy` on application resources but also cleans up the dev state blob and, if no other environments exist, deletes the state storage account itself — eliminating all residual cost.
 
 ## AI Usage & Critique
 
