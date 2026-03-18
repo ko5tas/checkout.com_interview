@@ -21,8 +21,12 @@ resource "azurerm_key_vault" "main" {
   # private endpoint (bypasses firewall entirely).
   public_network_access_enabled = true
 
+  # default_action = "Allow" permits the CI/CD SP (GitHub runners) to write
+  # secrets via the data plane. Runtime access from the Function App still
+  # goes through the private endpoint. Production would use "Deny" with
+  # IP-based ACLs for CI runner ranges or a self-hosted runner inside the VNet.
   network_acls {
-    default_action             = "Deny"
+    default_action             = "Allow"
     bypass                     = "AzureServices"
     virtual_network_subnet_ids = var.allowed_subnet_ids
   }
