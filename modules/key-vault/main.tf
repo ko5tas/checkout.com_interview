@@ -14,6 +14,13 @@ resource "azurerm_key_vault" "main" {
   purge_protection_enabled   = true
   soft_delete_retention_days = 7
 
+  # public_network_access must be enabled for CI/CD (GitHub runners) to write
+  # secrets via the data plane. The network_acls still restrict access to
+  # authorised callers — only Azure Services and the function subnet can
+  # reach the Key Vault. Runtime traffic from the Function App uses the
+  # private endpoint (bypasses firewall entirely).
+  public_network_access_enabled = true
+
   network_acls {
     default_action             = "Deny"
     bypass                     = "AzureServices"

@@ -123,6 +123,58 @@ resource "azurerm_network_security_rule" "pe_deny_internet_inbound" {
   network_security_group_name = azurerm_network_security_group.private_endpoints.name
 }
 
+# --- NSG: APIM subnet (required for Internal VNet mode) ---
+# See: https://aka.ms/apiminternalvnet
+
+resource "azurerm_network_security_group" "apim" {
+  name                = "nsg-apim-${var.name_prefix}"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  tags                = var.tags
+}
+
+resource "azurerm_network_security_rule" "apim_allow_management" {
+  name                        = "AllowAPIMManagement"
+  priority                    = 100
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "3443"
+  source_address_prefix       = "ApiManagement"
+  destination_address_prefix  = "VirtualNetwork"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.apim.name
+}
+
+resource "azurerm_network_security_rule" "apim_allow_lb" {
+  name                        = "AllowAzureLoadBalancer"
+  priority                    = 110
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "6390"
+  source_address_prefix       = "AzureLoadBalancer"
+  destination_address_prefix  = "VirtualNetwork"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.apim.name
+}
+
+resource "azurerm_network_security_rule" "apim_allow_https_inbound" {
+  name                        = "AllowHttpsInbound"
+  priority                    = 120
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "443"
+  source_address_prefix       = "VirtualNetwork"
+  destination_address_prefix  = "VirtualNetwork"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.apim.name
+}
+
 # --- NSG Associations ---
 
 resource "azurerm_subnet_network_security_group_association" "function" {
@@ -133,4 +185,9 @@ resource "azurerm_subnet_network_security_group_association" "function" {
 resource "azurerm_subnet_network_security_group_association" "private_endpoints" {
   subnet_id                 = azurerm_subnet.private_endpoints.id
   network_security_group_id = azurerm_network_security_group.private_endpoints.id
+}
+
+resource "azurerm_subnet_network_security_group_association" "apim" {
+  subnet_id                 = azurerm_subnet.apim.id
+  network_security_group_id = azurerm_network_security_group.apim.id
 }
