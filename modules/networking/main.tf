@@ -14,6 +14,13 @@ resource "azurerm_subnet" "function" {
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = [var.subnets["function"]]
 
+  # Service endpoints allow VNet-integrated resources to reach PaaS services
+  # over the Azure backbone rather than the public internet.
+  service_endpoints = [
+    "Microsoft.KeyVault",
+    "Microsoft.Storage",
+  ]
+
   delegation {
     name = "function-delegation"
 

@@ -293,6 +293,26 @@ gh secret set AZURE_TENANT_ID --body "<TENANT_ID>"
 | `AZURE_SUBSCRIPTION_ID` | Target Azure subscription | `az account show --query id` |
 | `AZURE_TENANT_ID` | Azure AD tenant | `az account show --query tenantId` |
 
+### Step 5: (Optional) Set Gemini API Key for AI Features
+
+The deploy pipeline and weekly AI advisor use Google Gemini (free tier) for plan risk analysis and codebase improvement suggestions. Without this key, those steps gracefully degrade to deterministic-only analysis.
+
+1. Go to [aistudio.google.com](https://aistudio.google.com) → "Get API key" → "Create API key"
+2. Free tier: 15 requests/minute, 1M tokens/day — more than sufficient for CI/CD use
+3. Set it as a GitHub secret:
+
+```bash
+gh secret set GEMINI_API_KEY --body "<YOUR_GEMINI_API_KEY>"
+```
+
+| Secret | What It Is | Where It Comes From |
+|--------|-----------|-------------------|
+| `GEMINI_API_KEY` | Google Gemini API key | [aistudio.google.com](https://aistudio.google.com) |
+
+**What it powers:**
+- `deploy.yml` → AI Plan Analysis job: natural-language risk summary of terraform plan changes
+- `ai-advisor.yml` → Weekly codebase review: dependency updates, security advisories, architecture improvements
+
 ### How OIDC Works in the Workflow
 
 ```yaml
