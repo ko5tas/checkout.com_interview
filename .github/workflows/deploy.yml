@@ -237,8 +237,30 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # State verification runs in the Plan job only — running it here would
-      # invalidate the saved plan if state changes between jobs.
+      # Read-only state guard: if the plan was made against a clean slate but
+      # resources have since appeared (e.g., APIM deletion was still in progress),
+      # fail fast rather than waste 45 min on a doomed apply.
+      - name: Pre-Apply State Guard (read-only)
+        if: inputs.action == 'apply'
+        env:
+          TARGET_RG: rg-checkout-${{ inputs.environment }}
+          STATE_SA: sttfstatede4c37db
+          STATE_CONTAINER: tfstate
+          STATE_KEY: checkout-${{ inputs.environment }}.tfstate
+        run: |
+          STATE_SIZE=$(az storage blob show \
+            --account-name "$STATE_SA" --container-name "$STATE_CONTAINER" \
+            --name "$STATE_KEY" --query "properties.contentLength" \
+            --output tsv 2>/dev/null || echo "0")
+          RG_EXISTS=$(az group exists --name "$TARGET_RG" 2>/dev/null)
+
+          if [[ "$RG_EXISTS" == "true" && "$STATE_SIZE" == "0" ]]; then
+            echo "::error::FATAL: RG '$TARGET_RG' exists but state is empty. Plan is stale — cannot apply."
+            echo "This means resources were created outside of this plan's scope."
+            echo "Fix: destroy the RG, clean state, and re-run the full plan+apply."
+            exit 1
+          fi
+          echo "✓ State guard passed (RG=$RG_EXISTS, state=${STATE_SIZE}b)"
 
       - name: Terraform Init
         env:
