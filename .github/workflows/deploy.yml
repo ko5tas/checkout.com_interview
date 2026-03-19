@@ -67,7 +67,7 @@ jobs:
           cd /tmp/func-release && zip -r /tmp/function-app.zip .
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: function-app
           path: /tmp/function-app.zip
@@ -122,13 +122,13 @@ jobs:
           echo "summary=${SUMMARY}" >> "$GITHUB_OUTPUT"
 
       - name: Upload plan artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tfplan
           path: tfplan
 
       - name: Upload plan output
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: plan-output
           path: plan-output.txt
@@ -232,7 +232,7 @@ jobs:
           AUDIT
 
       - name: Upload audit log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: audit-deploy-${{ github.run_id }}
           path: audit-log.json
