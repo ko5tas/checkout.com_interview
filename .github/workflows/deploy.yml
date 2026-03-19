@@ -262,10 +262,29 @@ jobs:
           FUNC_NAME: ${{ needs.terraform-apply.outputs.function-app-name }}
           RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
         run: |
-          az functionapp deployment source config-zip \
+          # Get SCM credentials from publish profile
+          CREDS=$(az functionapp deployment list-publishing-credentials \
             --name "$FUNC_NAME" \
             --resource-group "$RG_NAME" \
-            --src function-app.zip
+            --query "{user: publishingUserName, pass: publishingPassword}" -o json)
+          USER=$(echo "$CREDS" | jq -r '.user')
+          PASS=$(echo "$CREDS" | jq -r '.pass')
+
+          # Deploy via Kudu ZIP deploy API with basic auth
+          RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/deploy-response.txt \
+            -X POST \
+            -u "${USER}:${PASS}" \
+            -H "Content-Type: application/zip" \
+            --data-binary @function-app.zip \
+            "https://${FUNC_NAME}.scm.azurewebsites.net/api/zipdeploy?isAsync=false")
+
+          echo "Deploy response code: $RESPONSE"
+          cat /tmp/deploy-response.txt
+          if [ "$RESPONSE" -ge 400 ]; then
+            echo "::error::Deployment failed with HTTP $RESPONSE"
+            exit 1
+          fi
+          echo "Deployment successful!"
 
   # --- Smoke Tests (apply only) ---
   smoke-test:
