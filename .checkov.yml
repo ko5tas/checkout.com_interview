@@ -44,3 +44,12 @@ skip-check:
   # the management plane publicly. Production Premium tier with private
   # endpoint would disable public access entirely.
   - CKV_AZURE_174 # Ensure API management public access is disabled
+
+  # Function App public network access: required for Consumption plan (Y1)
+  # deployed from GitHub-hosted runners. Production with EP1+ and
+  # self-hosted runners would disable public access.
+  - CKV_AZURE_221 # Ensure that Azure Function App public network access is disabled
+
+  # Key Vault firewall: default_action=Allow required for CI/CD SP on
+  # GitHub-hosted runners (dynamic IPs). Production would use Deny + IP ACLs.
+  - CKV_AZURE_109 # Ensure that key vault allows firewall rules settings
