@@ -1,5 +1,5 @@
 resource "random_string" "kv_suffix" {
-  length  = 4
+  length  = 8
   special = false
   upper   = false
 }
