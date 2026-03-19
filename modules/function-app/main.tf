@@ -20,8 +20,11 @@ resource "azurerm_storage_account" "function" {
   allow_nested_items_to_be_public = false
   tags                            = var.tags
 
+  # NOTE: Consumption plan Kudu runs in shared multi-tenant infra that doesn't
+  # qualify for AzureServices bypass. Must Allow for zip deploy and file share access.
+  # Production with EP1+ plan: set to Deny with VNet rules for the function subnet.
   network_rules {
-    default_action = "Deny"
+    default_action = "Allow"
     bypass         = ["AzureServices"]
   }
 
