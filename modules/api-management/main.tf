@@ -74,14 +74,14 @@ resource "azurerm_api_management_api_policy" "message_mtls" {
         <base />
         <validate-client-certificate
           validate-revocation="false"
-          validate-trust="true"
+          validate-trust="false"
           validate-not-before="true"
-          validate-not-after="true">
+          validate-not-after="true"
+          ignore-error="false">
           <identities>
             <identity
-              subject="${var.allowed_client_cn}"
-              thumbprint="*"
-              certificate-id="${azurerm_api_management_certificate.ca.name}" />
+              common-name="${var.allowed_client_cn}"
+              issuer-certificate-id="${azurerm_api_management_certificate.ca.name}" />
           </identities>
         </validate-client-certificate>
       </inbound>
