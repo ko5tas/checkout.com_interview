@@ -30,3 +30,17 @@ skip-check:
   # requires specific rules for APIM management traffic. Documented as
   # a production enhancement.
   - CKV2_AZURE_31 # Ensure VNET subnet is configured with a Network Security Group
+
+  # Storage Account public access: required for Consumption plan (Y1) deployed
+  # from GitHub-hosted runners. Production with EP1+ and self-hosted runners
+  # would disable public access.
+  - CKV_AZURE_59 # Ensure that Storage accounts disallow public access
+
+  # Storage Account default network rule: same as above — Allow needed for
+  # GitHub-hosted runner access. Production would use Deny + VNet rules.
+  - CKV_AZURE_35 # Ensure default network access rule for Storage Accounts is set to deny
+
+  # APIM public access: Developer tier in Internal VNet mode still exposes
+  # the management plane publicly. Production Premium tier with private
+  # endpoint would disable public access entirely.
+  - CKV_AZURE_174 # Ensure API management public access is disabled
