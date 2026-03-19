@@ -85,7 +85,7 @@ GitHub Runner (public internet)
 - Go handler logic (payload processing, response format)
 - End-to-end latency under real network conditions
 
-**Cost:** ~$0/month (Consumption Y1 plan, only runs when CI triggers it)
+**Cost:** ~$13/month (Basic B1 plan, required for VNet integration; ~$6/month with nightly destroy schedule). Consumption Y1 does NOT support VNet integration — Azure silently rejects the `virtual_network_subnet_id` setting on Dynamic SKU.
 
 **Alternatives considered:**
 - Azure Container Instance (ACI): ephemeral but awkward VNet/DNS integration
@@ -404,7 +404,7 @@ gh secret delete AZURE_TENANT_ID
 | Resource | Monthly Cost |
 |----------|-------------|
 | Function App — main (Consumption Y1) | ~$0 (1M free executions) |
-| Function App — smoke test (Consumption Y1) | ~$0 (runs only during CI) |
+| Function App — smoke test (Basic B1) | ~$13 (~$6 with nightly destroy) |
 | APIM Developer tier | ~$50 |
 | Storage Account — main (LRS) | ~$1 |
 | Storage Account — smoke test (LRS) | ~$1 |

@@ -71,7 +71,6 @@ module "function_app" {
   name_prefix                      = local.name_prefix
   location                         = var.location
   resource_group_name              = azurerm_resource_group.main.name
-  function_subnet_id               = module.networking.subnet_ids["function"]
   pe_subnet_id                     = module.networking.subnet_ids["private_endpoints"]
   vnet_id                          = module.networking.vnet_id
   app_insights_instrumentation_key = module.observability.app_insights_instrumentation_key

@@ -13,10 +13,8 @@ variable "resource_group_name" {
   type        = string
 }
 
-variable "function_subnet_id" {
-  description = "Subnet ID for Function App VNet integration"
-  type        = string
-}
+# function_subnet_id removed — Consumption plan (Y1/Dynamic) does NOT support
+# VNet integration. Production with EP1+ would add this back.
 
 variable "pe_subnet_id" {
   description = "Subnet ID for private endpoints"

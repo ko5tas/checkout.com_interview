@@ -40,7 +40,7 @@ resource "azurerm_service_plan" "smoke_test" {
   location            = var.location
   resource_group_name = var.resource_group_name
   os_type             = "Linux"
-  sku_name            = "Y1"
+  sku_name            = "B1" # Basic plan — cheapest SKU with VNet integration support
   tags                = var.tags
 }
 
@@ -60,10 +60,9 @@ resource "azurerm_linux_function_app" "smoke_test" {
   ftp_publish_basic_authentication_enabled       = false
   tags                                           = var.tags
 
-  # NOTE: VNet integration (virtual_network_subnet_id) is NOT supported on
-  # Consumption plan (Y1/Dynamic). Production would use EP1+ with VNet integration.
-  # The smoke test function reaches the main function via its public hostname
-  # with mTLS authentication (same as APIM would).
+  # B1 plan supports VNet integration — routes smoke test traffic through
+  # the VNet to reach the main function's private endpoint.
+  virtual_network_subnet_id = var.subnet_id
 
   identity {
     type = "SystemAssigned"
@@ -73,6 +72,9 @@ resource "azurerm_linux_function_app" "smoke_test" {
     application_stack {
       use_custom_runtime = true
     }
+    # Route all outbound traffic through the VNet so the smoke test
+    # reaches the main function via its private endpoint, not the public one.
+    vnet_route_all_enabled = true
   }
 
   app_settings = {
