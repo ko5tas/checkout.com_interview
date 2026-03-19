@@ -104,7 +104,6 @@ module "smoke_test" {
 
   name_prefix                      = local.name_prefix
   location                         = var.location
-  resource_group_name              = azurerm_resource_group.main.name
   subnet_id                        = module.networking.subnet_ids["smoke_test"]
   target_function_hostname         = module.function_app.function_app_default_hostname
   key_vault_id                     = module.key_vault.key_vault_id

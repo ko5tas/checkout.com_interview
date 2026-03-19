@@ -1,3 +1,8 @@
+output "resource_group_name" {
+  description = "Name of the smoke test resource group"
+  value       = azurerm_resource_group.smoke_test.name
+}
+
 output "function_app_name" {
   description = "Name of the smoke test function app"
   value       = azurerm_linux_function_app.smoke_test.name

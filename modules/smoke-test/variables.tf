@@ -8,11 +8,6 @@ variable "location" {
   type        = string
 }
 
-variable "resource_group_name" {
-  description = "Name of the resource group"
-  type        = string
-}
-
 variable "subnet_id" {
   description = "Subnet ID for VNet integration (smoke test subnet)"
   type        = string

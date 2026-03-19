@@ -221,6 +221,7 @@ jobs:
     outputs:
       function-app-name: ${{ steps.outputs.outputs.func-name }}
       smoke-test-name: ${{ steps.outputs.outputs.smoke-name }}
+      smoke-test-rg: ${{ steps.outputs.outputs.smoke-rg }}
       resource-group: ${{ steps.outputs.outputs.rg-name }}
     steps:
       - uses: actions/checkout@v4
@@ -281,6 +282,7 @@ jobs:
         run: |
           echo "func-name=$(terraform output -raw function_app_name)" >> "$GITHUB_OUTPUT"
           echo "smoke-name=$(terraform output -raw smoke_test_function_name)" >> "$GITHUB_OUTPUT"
+          echo "smoke-rg=$(terraform output -raw smoke_test_resource_group_name)" >> "$GITHUB_OUTPUT"
           echo "rg-name=$(terraform output -raw resource_group_name)" >> "$GITHUB_OUTPUT"
 
       - name: Generate audit log
@@ -349,7 +351,7 @@ jobs:
       - name: Deploy smoke test Function App
         env:
           FUNC_NAME: ${{ needs.terraform-apply.outputs.smoke-test-name }}
-          RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
+          RG_NAME: ${{ needs.terraform-apply.outputs.smoke-test-rg }}
         run: |
           az functionapp deployment source config-zip \
             --name "$FUNC_NAME" \
@@ -390,7 +392,7 @@ jobs:
       - name: Verify smoke test Function App is Running
         env:
           FUNC_NAME: ${{ needs.terraform-apply.outputs.smoke-test-name }}
-          RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
+          RG_NAME: ${{ needs.terraform-apply.outputs.smoke-test-rg }}
         run: |
           STATE=$(az functionapp show \
             --name "$FUNC_NAME" \
@@ -419,7 +421,7 @@ jobs:
       - name: Invoke mTLS smoke test (VNet-internal)
         env:
           FUNC_NAME: ${{ needs.terraform-apply.outputs.smoke-test-name }}
-          RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
+          RG_NAME: ${{ needs.terraform-apply.outputs.smoke-test-rg }}
         run: |
           echo "Triggering VNet-internal mTLS smoke test..."
 

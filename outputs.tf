@@ -23,6 +23,11 @@ output "smoke_test_function_name" {
   value       = module.smoke_test.function_app_name
 }
 
+output "smoke_test_resource_group_name" {
+  description = "Name of the smoke test resource group"
+  value       = module.smoke_test.resource_group_name
+}
+
 output "log_analytics_workspace_id" {
   description = "Log Analytics Workspace ID"
   value       = module.observability.log_analytics_workspace_id

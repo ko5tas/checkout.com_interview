@@ -1,6 +1,17 @@
 # Lightweight smoke test Function App — lives inside the VNet and tests the
 # main API function end-to-end with mTLS. Intentionally minimal: no private
 # endpoints, no mTLS on itself (it's internal tooling, not a public API).
+#
+# IMPORTANT: This module creates its own resource group because Azure does not
+# allow Dynamic (Y1/Consumption) and non-Dynamic (B1/Basic) Linux App Service
+# Plans to coexist in the same resource group. The main function uses Y1
+# (Consumption), so the smoke test (B1 for VNet integration) must be separate.
+
+resource "azurerm_resource_group" "smoke_test" {
+  name     = "rg-smoke-${var.name_prefix}"
+  location = var.location
+  tags     = var.tags
+}
 
 resource "random_string" "sa_suffix" {
   length  = 4
@@ -12,7 +23,7 @@ resource "random_string" "sa_suffix" {
 
 resource "azurerm_storage_account" "smoke_test" {
   name                            = "stsmoke${replace(var.name_prefix, "-", "")}${random_string.sa_suffix.result}"
-  resource_group_name             = var.resource_group_name
+  resource_group_name             = azurerm_resource_group.smoke_test.name
   location                        = var.location
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
@@ -38,7 +49,7 @@ resource "azurerm_storage_account" "smoke_test" {
 resource "azurerm_service_plan" "smoke_test" {
   name                = "asp-smoke-${var.name_prefix}"
   location            = var.location
-  resource_group_name = var.resource_group_name
+  resource_group_name = azurerm_resource_group.smoke_test.name
   os_type             = "Linux"
   sku_name            = "B1" # Basic plan — cheapest SKU with VNet integration support
   tags                = var.tags
