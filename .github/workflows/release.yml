@@ -159,7 +159,7 @@ jobs:
         run: terraform validate
 
       - name: TFLint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
       - run: |
           tflint --init
           tflint --recursive
