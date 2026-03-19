@@ -90,7 +90,68 @@ elif [[ "${RG_EXISTS}" == "false" && "${STATE_SIZE}" == "0" ]]; then
   echo "✓ Clean slate — no RG, no state. Safe to apply."
 
 else
-  echo "✓ RG and state both exist. Normal apply."
+  # Both RG and state exist — but state might be partial (from a failed apply).
+  # Count resources in Azure vs resources in state to detect drift.
+  echo "  Checking for state drift..."
+  AZURE_RESOURCE_COUNT=$(az resource list \
+    --resource-group "${TARGET_RG}" \
+    --query "length(@)" \
+    --output tsv 2>/dev/null || echo "0")
+
+  # Download state and count resources
+  TEMP_STATE=$(mktemp)
+  az storage blob download \
+    --account-name "${STATE_SA}" \
+    --container-name "${STATE_CONTAINER}" \
+    --name "${STATE_KEY}" \
+    --file "${TEMP_STATE}" \
+    --output none 2>/dev/null || true
+
+  STATE_RESOURCE_COUNT=0
+  if [[ -f "${TEMP_STATE}" && -s "${TEMP_STATE}" ]]; then
+    STATE_RESOURCE_COUNT=$(python3 -c "
+import json, sys
+try:
+    data = json.load(open('${TEMP_STATE}'))
+    resources = data.get('resources', [])
+    count = sum(len(r.get('instances', [])) for r in resources)
+    print(count)
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+  fi
+  rm -f "${TEMP_STATE}"
+
+  echo "  Azure resources: ${AZURE_RESOURCE_COUNT}, State resources: ${STATE_RESOURCE_COUNT}"
+
+  # If Azure has significantly more resources than state, it's a partial apply
+  if [[ "${AZURE_RESOURCE_COUNT}" -gt 0 && "${STATE_RESOURCE_COUNT}" -lt 3 ]]; then
+    echo "⚠ DRIFT: Azure has ${AZURE_RESOURCE_COUNT} resources but state only tracks ${STATE_RESOURCE_COUNT}."
+    echo "  This indicates a partial apply. Cleaning both..."
+    echo "  Deleting state blob..."
+    az storage blob delete \
+      --account-name "${STATE_SA}" \
+      --container-name "${STATE_CONTAINER}" \
+      --name "${STATE_KEY}" \
+      --auth-mode key \
+      --output none 2>/dev/null || \
+    az storage blob delete \
+      --account-name "${STATE_SA}" \
+      --container-name "${STATE_CONTAINER}" \
+      --name "${STATE_KEY}" \
+      --auth-mode login \
+      --output none 2>/dev/null || true
+    echo "  Deleting orphaned RG '${TARGET_RG}'..."
+    az group delete --name "${TARGET_RG}" --yes --no-wait
+    echo "  Waiting for RG deletion (this may take 10+ minutes for APIM)..."
+    while az group exists --name "${TARGET_RG}" 2>/dev/null | grep -q true; do
+      sleep 30
+      echo "  Still waiting..."
+    done
+    echo "  ✓ Both cleaned. Safe to apply from clean slate."
+  else
+    echo "✓ RG and state both exist with consistent resource counts. Normal apply."
+  fi
 fi
 
 # 5. Purge soft-deleted Key Vaults that match our naming pattern.
