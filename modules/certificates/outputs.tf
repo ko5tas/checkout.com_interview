@@ -27,7 +27,7 @@ output "ca_cert_thumbprint" {
 
 output "client_cert_thumbprint" {
   description = "SHA-1 fingerprint of the client certificate PEM content"
-  value = sha1(tls_locally_signed_cert.client.cert_pem)
+  value       = sha1(tls_locally_signed_cert.client.cert_pem)
 }
 
 output "ca_key_vault_certificate_id" {

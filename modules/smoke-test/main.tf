@@ -41,18 +41,18 @@ resource "azurerm_service_plan" "smoke_test" {
 # --- Function App ---
 
 resource "azurerm_linux_function_app" "smoke_test" {
-  name                          = "func-smoke-${var.name_prefix}"
-  location                      = var.location
-  resource_group_name           = var.resource_group_name
-  service_plan_id               = azurerm_service_plan.smoke_test.id
-  storage_account_name          = azurerm_storage_account.smoke_test.name
-  storage_account_access_key    = azurerm_storage_account.smoke_test.primary_access_key
-  https_only                    = true
-  public_network_access_enabled                = true
-  client_certificate_mode                      = "Optional" # Not a public API — no mTLS needed on itself
+  name                                           = "func-smoke-${var.name_prefix}"
+  location                                       = var.location
+  resource_group_name                            = var.resource_group_name
+  service_plan_id                                = azurerm_service_plan.smoke_test.id
+  storage_account_name                           = azurerm_storage_account.smoke_test.name
+  storage_account_access_key                     = azurerm_storage_account.smoke_test.primary_access_key
+  https_only                                     = true
+  public_network_access_enabled                  = true
+  client_certificate_mode                        = "Optional" # Not a public API — no mTLS needed on itself
   webdeploy_publish_basic_authentication_enabled = true
-  ftp_publish_basic_authentication_enabled      = false
-  tags                                         = var.tags
+  ftp_publish_basic_authentication_enabled       = false
+  tags                                           = var.tags
 
   virtual_network_subnet_id = var.subnet_id
 
@@ -69,12 +69,12 @@ resource "azurerm_linux_function_app" "smoke_test" {
   }
 
   app_settings = {
-    "APPINSIGHTS_INSTRUMENTATIONKEY"        = var.app_insights_instrumentation_key
-    "APPLICATIONINSIGHTS_CONNECTION_STRING" = var.app_insights_connection_string
+    "APPINSIGHTS_INSTRUMENTATIONKEY"           = var.app_insights_instrumentation_key
+    "APPLICATIONINSIGHTS_CONNECTION_STRING"    = var.app_insights_connection_string
     "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.smoke_test.name};AccountKey=${azurerm_storage_account.smoke_test.primary_access_key};EndpointSuffix=core.windows.net"
-    "WEBSITE_CONTENTSHARE"                 = "func-smoke-${var.name_prefix}-content"
-    "FUNCTIONS_WORKER_RUNTIME"              = "custom"
-    "WEBSITE_RUN_FROM_PACKAGE"             = "1"
+    "WEBSITE_CONTENTSHARE"                     = "func-smoke-${var.name_prefix}-content"
+    "FUNCTIONS_WORKER_RUNTIME"                 = "custom"
+    "WEBSITE_RUN_FROM_PACKAGE"                 = "1"
     # Smoke test configuration
     "TARGET_FUNCTION_HOSTNAME" = var.target_function_hostname
     "KEY_VAULT_URI"            = var.key_vault_uri

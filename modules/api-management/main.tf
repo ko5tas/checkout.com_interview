@@ -1,11 +1,11 @@
 resource "azurerm_api_management" "main" {
-  name                          = "apim-${var.name_prefix}"
-  location                      = var.location
-  resource_group_name           = var.resource_group_name
-  publisher_name                = var.publisher_name
-  publisher_email               = var.publisher_email
-  sku_name                      = "Developer_1"
-  virtual_network_type          = "Internal"
+  name                 = "apim-${var.name_prefix}"
+  location             = var.location
+  resource_group_name  = var.resource_group_name
+  publisher_name       = var.publisher_name
+  publisher_email      = var.publisher_email
+  sku_name             = "Developer_1"
+  virtual_network_type = "Internal"
   # Note: public_network_access cannot be disabled during initial creation
   # (Azure API limitation: ActivateServiceWithPrivateEndpointAccessNotAllowed).
   # Disable it in a subsequent apply or via az cli post-provisioning.

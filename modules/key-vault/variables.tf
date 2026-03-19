@@ -34,8 +34,8 @@ variable "allowed_subnet_ids" {
   default     = []
 }
 
-  # access_policies removed — Key Vault now uses Azure RBAC (enable_rbac_authorization = true).
-  # Role assignments are managed via azurerm_role_assignment in the calling module.
+# access_policies removed — Key Vault now uses Azure RBAC (enable_rbac_authorization = true).
+# Role assignments are managed via azurerm_role_assignment in the calling module.
 
 variable "tags" {
   description = "Tags to apply to all resources"

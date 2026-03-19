@@ -7,12 +7,12 @@ resource "random_string" "sa_suffix" {
 # --- Storage Account ---
 
 resource "azurerm_storage_account" "function" {
-  name                            = "stfunc${replace(var.name_prefix, "-", "")}${random_string.sa_suffix.result}"
-  resource_group_name             = var.resource_group_name
-  location                        = var.location
-  account_tier                    = "Standard"
-  account_replication_type        = "LRS"
-  min_tls_version                 = "TLS1_2"
+  name                     = "stfunc${replace(var.name_prefix, "-", "")}${random_string.sa_suffix.result}"
+  resource_group_name      = var.resource_group_name
+  location                 = var.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+  min_tls_version          = "TLS1_2"
   # NOTE: Consumption plan with GitHub-hosted runners requires public access for zip deploy.
   # Production with Elastic Premium (EP1+) would use VNet-integrated self-hosted runners
   # and set this to false. Private endpoints still provide in-VNet connectivity.
@@ -116,21 +116,21 @@ resource "azurerm_service_plan" "main" {
 # --- Function App ---
 
 resource "azurerm_linux_function_app" "main" {
-  name                          = "func-${var.name_prefix}"
-  location                      = var.location
-  resource_group_name           = var.resource_group_name
-  service_plan_id               = azurerm_service_plan.main.id
-  storage_account_name          = azurerm_storage_account.function.name
-  storage_account_access_key    = azurerm_storage_account.function.primary_access_key
-  https_only                    = true
+  name                       = "func-${var.name_prefix}"
+  location                   = var.location
+  resource_group_name        = var.resource_group_name
+  service_plan_id            = azurerm_service_plan.main.id
+  storage_account_name       = azurerm_storage_account.function.name
+  storage_account_access_key = azurerm_storage_account.function.primary_access_key
+  https_only                 = true
   # NOTE: Must be true for Consumption plan deployed from GitHub-hosted runners.
   # mTLS (client_certificate_mode=Required) still enforces authentication.
   # Production: set false with VNet-integrated EP1+ plan and self-hosted runners.
-  public_network_access_enabled                = true
-  client_certificate_mode                      = "Required"
+  public_network_access_enabled                  = true
+  client_certificate_mode                        = "Required"
   webdeploy_publish_basic_authentication_enabled = true  # Required for config-zip deploy from GitHub Actions
-  ftp_publish_basic_authentication_enabled      = false  # FTP not needed
-  tags                                         = var.tags
+  ftp_publish_basic_authentication_enabled       = false # FTP not needed
+  tags                                           = var.tags
 
   identity {
     type = "SystemAssigned"
@@ -143,12 +143,12 @@ resource "azurerm_linux_function_app" "main" {
   }
 
   app_settings = {
-    "APPINSIGHTS_INSTRUMENTATIONKEY"        = var.app_insights_instrumentation_key
-    "APPLICATIONINSIGHTS_CONNECTION_STRING" = var.app_insights_connection_string
+    "APPINSIGHTS_INSTRUMENTATIONKEY"           = var.app_insights_instrumentation_key
+    "APPLICATIONINSIGHTS_CONNECTION_STRING"    = var.app_insights_connection_string
     "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.function.name};AccountKey=${azurerm_storage_account.function.primary_access_key};EndpointSuffix=core.windows.net"
-    "WEBSITE_CONTENTSHARE"                 = "func-${var.name_prefix}-content"
-    "FUNCTIONS_WORKER_RUNTIME"              = "custom"
-    "WEBSITE_RUN_FROM_PACKAGE"             = "1"
+    "WEBSITE_CONTENTSHARE"                     = "func-${var.name_prefix}-content"
+    "FUNCTIONS_WORKER_RUNTIME"                 = "custom"
+    "WEBSITE_RUN_FROM_PACKAGE"                 = "1"
   }
 }
 
