@@ -130,8 +130,11 @@ resource "azurerm_linux_function_app" "main" {
   client_certificate_mode                        = "Required"
   webdeploy_publish_basic_authentication_enabled = true  # Required for config-zip deploy from GitHub Actions
   ftp_publish_basic_authentication_enabled       = false # FTP not needed
-  virtual_network_subnet_id                      = var.function_subnet_id
-  tags                                           = var.tags
+  # NOTE: VNet integration (virtual_network_subnet_id) is NOT supported on
+  # Consumption plan (Y1/Dynamic). Requires Elastic Premium (EP1+) or Dedicated.
+  # Azure silently rejects the update, causing "Missing Resource Identity" errors.
+  # Production would use EP1+ with VNet integration for private outbound traffic.
+  tags = var.tags
 
   identity {
     type = "SystemAssigned"
