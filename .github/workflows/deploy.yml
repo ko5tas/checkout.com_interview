@@ -200,13 +200,8 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Verify State Alignment
-        env:
-          STATE_RG: rg-tfstate-uksouth
-          STATE_SA: sttfstatede4c37db
-          STATE_KEY: checkout-${{ inputs.environment }}.tfstate
-          TARGET_RG: rg-checkout-${{ inputs.environment }}
-        run: bash scripts/verify-state.sh
+      # State verification runs in the Plan job only — running it here would
+      # invalidate the saved plan if state changes between jobs.
 
       - name: Terraform Init
         env:
