@@ -14,32 +14,20 @@ resource "azurerm_key_vault" "main" {
   purge_protection_enabled   = true
   soft_delete_retention_days = 7
 
-  # public_network_access must be enabled for CI/CD (GitHub runners) to write
-  # secrets via the data plane. The network_acls still restrict access to
-  # authorised callers — only Azure Services and the function subnet can
-  # reach the Key Vault. Runtime traffic from the Function App uses the
-  # private endpoint (bypasses firewall entirely).
+  # Use Azure RBAC instead of vault-local access policies.
+  # This centralises all authN/authZ through Entra ID, enabling:
+  # - Conditional Access policies
+  # - Privileged Identity Management (PIM) for JIT access
+  # - Unified audit logs in Entra ID sign-in/audit blades
+  # - Management Group policy enforcement across subscriptions
+  enable_rbac_authorization = true
+
   public_network_access_enabled = true
 
-  # default_action = "Allow" permits the CI/CD SP (GitHub runners) to write
-  # secrets via the data plane. Runtime access from the Function App still
-  # goes through the private endpoint. Production would use "Deny" with
-  # IP-based ACLs for CI runner ranges or a self-hosted runner inside the VNet.
   network_acls {
     default_action             = "Allow"
     bypass                     = "AzureServices"
     virtual_network_subnet_ids = var.allowed_subnet_ids
-  }
-
-  dynamic "access_policy" {
-    for_each = var.access_policies
-    content {
-      tenant_id               = access_policy.value.tenant_id
-      object_id               = access_policy.value.object_id
-      certificate_permissions = access_policy.value.certificate_permissions
-      key_permissions         = access_policy.value.key_permissions
-      secret_permissions      = access_policy.value.secret_permissions
-    }
   }
 
   tags = var.tags

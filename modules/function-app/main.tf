@@ -152,20 +152,18 @@ resource "azurerm_linux_function_app" "main" {
   }
 }
 
-# --- Key Vault Access for Managed Identity ---
+# --- Key Vault RBAC for Managed Identity ---
+# Uses Entra ID RBAC instead of vault-local access policies.
+# "Key Vault Secrets User" grants Get/List on secrets and certificates.
 
-resource "azurerm_key_vault_access_policy" "function_app" {
-  key_vault_id = var.key_vault_id
-  tenant_id    = azurerm_linux_function_app.main.identity[0].tenant_id
-  object_id    = azurerm_linux_function_app.main.identity[0].principal_id
+resource "azurerm_role_assignment" "function_kv_secrets" {
+  scope                = var.key_vault_id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_linux_function_app.main.identity[0].principal_id
+}
 
-  secret_permissions = [
-    "Get",
-    "List",
-  ]
-
-  certificate_permissions = [
-    "Get",
-    "List",
-  ]
+resource "azurerm_role_assignment" "function_kv_certs" {
+  scope                = var.key_vault_id
+  role_definition_name = "Key Vault Certificate User"
+  principal_id         = azurerm_linux_function_app.main.identity[0].principal_id
 }

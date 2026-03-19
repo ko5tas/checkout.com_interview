@@ -43,15 +43,13 @@ module "key_vault" {
   allowed_subnet_ids  = [module.networking.subnet_ids["function"]]
   tags                = local.common_tags
 
-  access_policies = [
-    {
-      tenant_id               = data.azurerm_client_config.current.tenant_id
-      object_id               = data.azurerm_client_config.current.object_id
-      certificate_permissions = ["Create", "Delete", "Get", "Import", "List", "Update"]
-      key_permissions         = ["Create", "Delete", "Get", "List"]
-      secret_permissions      = ["Delete", "Get", "List", "Set"]
-    },
-  ]
+}
+
+# Key Vault RBAC: CI/CD service principal gets admin access for cert/secret management
+resource "azurerm_role_assignment" "kv_cicd_admin" {
+  scope                = module.key_vault.key_vault_id
+  role_definition_name = "Key Vault Administrator"
+  principal_id         = data.azurerm_client_config.current.object_id
 }
 
 # --- Certificates ---

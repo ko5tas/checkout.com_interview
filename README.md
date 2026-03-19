@@ -350,6 +350,14 @@ gh secret delete AZURE_TENANT_ID
 - Remote state documented but not pre-provisioned (run `bootstrap-state.sh` first)
 - Python/Node/Java alternatives considered; Go chosen for type safety and performance
 - `authLevel: "anonymous"` on Function App HTTP trigger because authentication is handled by mTLS at both APIM and Function App layers
+- **Centralised Entra ID RBAC for Key Vault** — Key Vault uses `enable_rbac_authorization = true` with Azure RBAC role assignments instead of vault-local access policies. This centralises all authN/authZ through Entra ID, enabling Conditional Access, PIM, unified audit logs, and Management Group policy enforcement.
+- **Storage account still uses shared keys** — Azure Functions Consumption (Y1) plan on Linux **requires** `storage_account_access_key` for `AzureWebJobsStorage`; Managed Identity-based storage access is only supported on Elastic Premium (EP1+) and Dedicated plans. This is a known Microsoft limitation. Production would upgrade to EP1+ and use Managed Identity with `Storage Blob Data Owner` role for full Entra ID centralisation.
+- **Future improvements for full Entra ID centralisation:**
+  - Migrate to Elastic Premium plan to enable Managed Identity for Function App storage
+  - Implement Entra ID groups for RBAC role assignments (e.g., `Platform-Engineers` group → `Key Vault Administrator`)
+  - Add Management Groups to enforce policies across subscriptions (e.g., deny legacy access policy model)
+  - Enable Privileged Identity Management (PIM) for JIT elevation to sensitive roles
+  - Configure Conditional Access policies requiring MFA for Key Vault data plane access
 
 ## Estimated Azure Costs
 
