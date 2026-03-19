@@ -93,5 +93,26 @@ else
   echo "✓ RG and state both exist. Normal apply."
 fi
 
+# 5. Purge soft-deleted Key Vaults that match our naming pattern.
+# Azure Key Vault soft-delete retains names for 7-90 days, blocking
+# re-creation with the same name. Purge any matching vaults preemptively.
+echo ""
+echo "--- Checking for soft-deleted Key Vaults ---"
+NAME_PREFIX="${TARGET_RG#rg-}"  # e.g., rg-checkout-dev → checkout-dev
+DELETED_KVS=$(az keyvault list-deleted \
+  --query "[?contains(name,'${NAME_PREFIX}')].name" \
+  -o tsv 2>/dev/null || true)
+
+if [[ -n "${DELETED_KVS}" ]]; then
+  echo "⚠ Found soft-deleted Key Vaults matching '${NAME_PREFIX}':"
+  for KV in ${DELETED_KVS}; do
+    echo "  Purging ${KV}..."
+    az keyvault purge --name "${KV}" --no-wait 2>/dev/null || true
+  done
+  echo "  ✓ Purge initiated (runs in background)."
+else
+  echo "✓ No soft-deleted Key Vaults to purge."
+fi
+
 echo ""
 echo "=== Verification Complete ==="
