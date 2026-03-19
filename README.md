@@ -398,6 +398,17 @@ gh secret delete AZURE_TENANT_ID
   - Add Management Groups to enforce policies across subscriptions (e.g., deny legacy access policy model)
   - Enable Privileged Identity Management (PIM) for JIT elevation to sensitive roles
   - Configure Conditional Access policies requiring MFA for Key Vault data plane access
+- **Terraform state splitting (blast radius reduction)** — currently all resources share a single state file (`checkout-dev.tfstate`). Production should split into domain-specific state files to reduce blast radius:
+
+  | State File | Resources | Change Frequency |
+  |-----------|-----------|-----------------|
+  | `network.tfstate` | VNet, subnets, NSGs, private DNS zones | Rarely |
+  | `apim.tfstate` | APIM, certs, policies, private endpoint | Rarely (expensive, 28 min to provision) |
+  | `app.tfstate` | Function App, storage, Key Vault, secrets | Frequently |
+  | `observability.tfstate` | Log Analytics, App Insights, diagnostics | Rarely |
+
+  Benefits: a failed APIM apply doesn't corrupt networking state; app redeployment doesn't touch APIM; `terraform destroy` blast radius limited to one domain. Cross-state references use `terraform_remote_state` data sources.
+- **APIM race condition mitigation** — Azure APIM Developer tier takes ~28 minutes to provision. When it completes, Azure's internal async processes (diagnostics, DNS, internal certs) continue running. We use `time_sleep` (60s) after APIM creation with explicit `depends_on` on all child resources. This is a known azurerm provider issue ([#24135](https://github.com/hashicorp/terraform-provider-azurerm/issues/24135)).
 
 ## Estimated Azure Costs
 

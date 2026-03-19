@@ -21,9 +21,28 @@ resource "azurerm_api_management" "main" {
   }
 }
 
+# --- Post-provisioning stabilisation ---
+# Azure APIM Developer tier takes ~28 minutes to provision. When it completes,
+# Azure's internal async processes (diagnostic settings, internal certificates,
+# DNS registration) continue running in the background. If Terraform immediately
+# creates child resources (certificates, APIs, diagnostics), they collide with
+# Azure's internal creation and fail with "already exists" errors.
+#
+# This is a known azurerm provider issue:
+# https://github.com/hashicorp/terraform-provider-azurerm/issues/24135
+#
+# The time_sleep gives Azure 60 seconds to finish its internal housekeeping
+# before we create any child resources. All APIM child resources depend on this.
+
+resource "time_sleep" "wait_for_apim_internals" {
+  depends_on      = [azurerm_api_management.main]
+  create_duration = "60s"
+}
+
 # --- CA Certificate for mTLS ---
 
 resource "azurerm_api_management_certificate" "ca" {
+  depends_on          = [time_sleep.wait_for_apim_internals]
   name                = "internal-ca"
   api_management_name = azurerm_api_management.main.name
   resource_group_name = var.resource_group_name
@@ -33,6 +52,7 @@ resource "azurerm_api_management_certificate" "ca" {
 # --- API Definition ---
 
 resource "azurerm_api_management_api" "message" {
+  depends_on            = [time_sleep.wait_for_apim_internals]
   name                  = "message-api"
   api_management_name   = azurerm_api_management.main.name
   resource_group_name   = var.resource_group_name

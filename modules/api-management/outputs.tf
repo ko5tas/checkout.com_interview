@@ -17,3 +17,8 @@ output "private_ip_addresses" {
   description = "Private IP addresses of APIM (internal VNet mode)"
   value       = azurerm_api_management.main.private_ip_addresses
 }
+
+output "ready" {
+  description = "Signals that APIM and its internal async processes have stabilised. Depend on this before creating external resources that target APIM (e.g., diagnostic settings)."
+  value       = time_sleep.wait_for_apim_internals.id
+}

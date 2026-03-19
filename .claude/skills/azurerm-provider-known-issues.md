@@ -63,10 +63,35 @@ The azurerm provider frequently renames attributes between major versions. Commo
 - **Problem:** Not managed by Terraform; persists after destroy; confuses resource audits
 - **Fix:** Manual deletion via portal/CLI, or import into Terraform state
 
-#### 3.3 APIM Hidden Resources
-- **Trigger:** Creating `azurerm_api_management`
-- **Side effect:** Azure creates internal caches, managed identities, and policy fragments
-- **Problem:** Slow deletion (30-45 min), blocks RG destroy
+#### 3.3 APIM Internal Async Resources (Race Condition)
+- **Trigger:** Creating `azurerm_api_management` (Developer tier, ~28 min provisioning)
+- **Side effect:** When APIM finishes provisioning, Azure's internal async processes continue running — creating diagnostic settings, DNS entries, internal certificates, and policy fragments
+- **Problem:** If Terraform immediately creates child resources (certificates, APIs, diagnostic settings), they collide with Azure's internal creation and fail with `"already exists"` errors — even on a **completely clean deploy** with no prior state
+- **Error:** `a resource with the ID "...apim-checkout-dev|diag-apim-checkout-dev" already exists`
+- **Root cause:** azurerm provider doesn't check for pre-existing resources before attempting creation; Azure's internal processes race with Terraform
+- **Fix:**
+  ```hcl
+  # Add a time_sleep after APIM creation to let Azure finish internal housekeeping
+  resource "time_sleep" "wait_for_apim_internals" {
+    depends_on      = [azurerm_api_management.main]
+    create_duration = "60s"
+  }
+
+  # ALL child resources must depend on the time_sleep, not directly on APIM
+  resource "azurerm_api_management_certificate" "ca" {
+    depends_on = [time_sleep.wait_for_apim_internals]
+    ...
+  }
+
+  # For resources OUTSIDE the module (e.g., diagnostic settings), expose a
+  # "ready" output that chains through the time_sleep:
+  output "ready" {
+    value = time_sleep.wait_for_apim_internals.id
+  }
+  ```
+- **Anti-pattern:** Do NOT use `terraform import` in CI as a workaround — it's a hack that masks the underlying race condition
+- **GitHub issue:** https://github.com/hashicorp/terraform-provider-azurerm/issues/24135
+- **Provider requirement:** `hashicorp/time ~> 0.12`
 
 ### Category 4: Soft-Delete & Purge Protection
 

@@ -14,7 +14,10 @@ resource "azurerm_monitor_diagnostic_setting" "function_app" {
   }
 }
 
+# depends_on chains through module.api_management.ready which waits for
+# time_sleep after APIM provisioning — prevents "already exists" race condition.
 resource "azurerm_monitor_diagnostic_setting" "apim" {
+  depends_on                 = [module.api_management]
   name                       = "diag-apim-${local.name_prefix}"
   target_resource_id         = module.api_management.apim_id
   log_analytics_workspace_id = module.observability.log_analytics_workspace_id

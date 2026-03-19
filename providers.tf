@@ -16,6 +16,8 @@ provider "tls" {}
 
 provider "random" {}
 
+provider "time" {}
+
 # Remote state backend.
 # The key is passed via -backend-config="key=checkout-${ENV}.tfstate" at init time,
 # giving each environment its own state file in the same container.
