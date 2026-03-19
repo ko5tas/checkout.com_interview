@@ -47,6 +47,30 @@ resource "azurerm_subnet" "apim" {
   address_prefixes     = [var.subnets["apim"]]
 }
 
+resource "azurerm_subnet" "smoke_test" {
+  name                 = "snet-smoke-test"
+  resource_group_name  = var.resource_group_name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = [var.subnets["smoke_test"]]
+
+  # Service endpoints for Key Vault access (fetch client cert for mTLS)
+  service_endpoints = [
+    "Microsoft.KeyVault",
+    "Microsoft.Storage",
+  ]
+
+  delegation {
+    name = "smoke-test-delegation"
+
+    service_delegation {
+      name = "Microsoft.Web/serverFarms"
+      actions = [
+        "Microsoft.Network/virtualNetworks/subnets/action",
+      ]
+    }
+  }
+}
+
 # --- Network Security Groups ---
 
 resource "azurerm_network_security_group" "function" {
@@ -175,6 +199,43 @@ resource "azurerm_network_security_rule" "apim_allow_https_inbound" {
   network_security_group_name = azurerm_network_security_group.apim.name
 }
 
+# --- NSG: Smoke Test subnet ---
+
+resource "azurerm_network_security_group" "smoke_test" {
+  name                = "nsg-smoke-test-${var.name_prefix}"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  tags                = var.tags
+}
+
+resource "azurerm_network_security_rule" "smoke_test_allow_vnet_outbound" {
+  name                        = "AllowVNetOutbound"
+  priority                    = 100
+  direction                   = "Outbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "443"
+  source_address_prefix       = "VirtualNetwork"
+  destination_address_prefix  = "VirtualNetwork"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.smoke_test.name
+}
+
+resource "azurerm_network_security_rule" "smoke_test_deny_internet_inbound" {
+  name                        = "DenyInternetInbound"
+  priority                    = 4096
+  direction                   = "Inbound"
+  access                      = "Deny"
+  protocol                    = "*"
+  source_port_range           = "*"
+  destination_port_range      = "*"
+  source_address_prefix       = "Internet"
+  destination_address_prefix  = "*"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.smoke_test.name
+}
+
 # --- NSG Associations ---
 
 resource "azurerm_subnet_network_security_group_association" "function" {
@@ -190,4 +251,9 @@ resource "azurerm_subnet_network_security_group_association" "private_endpoints"
 resource "azurerm_subnet_network_security_group_association" "apim" {
   subnet_id                 = azurerm_subnet.apim.id
   network_security_group_id = azurerm_network_security_group.apim.id
+}
+
+resource "azurerm_subnet_network_security_group_association" "smoke_test" {
+  subnet_id                 = azurerm_subnet.smoke_test.id
+  network_security_group_id = azurerm_network_security_group.smoke_test.id
 }

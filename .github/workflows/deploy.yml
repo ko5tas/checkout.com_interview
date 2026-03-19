@@ -72,6 +72,42 @@ jobs:
           name: function-app
           path: /tmp/function-app.zip
 
+  # --- Build Smoke Test Function (skip on destroy) ---
+  build-smoke-test:
+    name: Build Smoke Test Function
+    runs-on: ubuntu-latest
+    if: inputs.action != 'destroy'
+    defaults:
+      run:
+        working-directory: smoke-test-function
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: smoke-test-function/go.mod
+
+      - name: Build Linux amd64 binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -ldflags="-s -w" -o handler .
+
+      - name: Package Smoke Test Function
+        run: |
+          mkdir -p /tmp/smoke-release
+          cp handler /tmp/smoke-release/
+          cp host.json /tmp/smoke-release/
+          cp -r smoketest /tmp/smoke-release/
+          cd /tmp/smoke-release && zip -r /tmp/smoke-test.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-test-function
+          path: /tmp/smoke-test.zip
+
   # --- Terraform Plan ---
   terraform-plan:
     name: Terraform Plan
@@ -184,6 +220,7 @@ jobs:
     needs: approval
     outputs:
       function-app-name: ${{ steps.outputs.outputs.func-name }}
+      smoke-test-name: ${{ steps.outputs.outputs.smoke-name }}
       resource-group: ${{ steps.outputs.outputs.rg-name }}
     steps:
       - uses: actions/checkout@v4
@@ -221,6 +258,7 @@ jobs:
         if: inputs.action == 'apply'
         run: |
           echo "func-name=$(terraform output -raw function_app_name)" >> "$GITHUB_OUTPUT"
+          echo "smoke-name=$(terraform output -raw smoke_test_function_name)" >> "$GITHUB_OUTPUT"
           echo "rg-name=$(terraform output -raw resource_group_name)" >> "$GITHUB_OUTPUT"
 
       - name: Generate audit log
@@ -253,7 +291,7 @@ jobs:
   deploy-function:
     name: Deploy Function Code
     runs-on: ubuntu-latest
-    needs: [terraform-apply, build-function]
+    needs: [terraform-apply, build-function, build-smoke-test]
     if: inputs.action == 'apply'
     steps:
       - name: Azure Login (OIDC)
@@ -268,24 +306,39 @@ jobs:
         with:
           name: function-app
 
-      - name: Deploy to Function App
+      - name: Download smoke test artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: smoke-test-function
+
+      - name: Deploy main Function App
         env:
           FUNC_NAME: ${{ needs.terraform-apply.outputs.function-app-name }}
           RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
         run: |
-          # Deploy via Azure CLI — works with private endpoints because it
-          # uploads the ZIP to the internal blob store via ARM, bypassing
-          # the Kudu SCM endpoint which can't reach private storage.
           az functionapp deployment source config-zip \
             --name "$FUNC_NAME" \
             --resource-group "$RG_NAME" \
             --src function-app.zip \
             --build-remote false \
             --timeout 300
+          echo "Main function deployed!"
 
-          echo "Deployment successful!"
+      - name: Deploy smoke test Function App
+        env:
+          FUNC_NAME: ${{ needs.terraform-apply.outputs.smoke-test-name }}
+          RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
+        run: |
+          az functionapp deployment source config-zip \
+            --name "$FUNC_NAME" \
+            --resource-group "$RG_NAME" \
+            --src smoke-test.zip \
+            --build-remote false \
+            --timeout 300
+          echo "Smoke test function deployed!"
 
   # --- Smoke Tests (apply only) ---
+  # Two phases: control-plane checks (ARM), then data-plane mTLS test (VNet-internal)
   smoke-test:
     name: Smoke Tests
     runs-on: ubuntu-latest
@@ -299,7 +352,8 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Verify Function App is Running
+      # Phase 1: Control-plane checks
+      - name: Verify main Function App is Running
         env:
           FUNC_NAME: ${{ needs.terraform-apply.outputs.function-app-name }}
           RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
@@ -308,7 +362,19 @@ jobs:
             --name "$FUNC_NAME" \
             --resource-group "$RG_NAME" \
             --query "state" -o tsv)
-          echo "Function App state: $STATE"
+          echo "Main Function App state: $STATE"
+          [ "$STATE" = "Running" ] || { echo "FAIL: state is $STATE"; exit 1; }
+
+      - name: Verify smoke test Function App is Running
+        env:
+          FUNC_NAME: ${{ needs.terraform-apply.outputs.smoke-test-name }}
+          RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
+        run: |
+          STATE=$(az functionapp show \
+            --name "$FUNC_NAME" \
+            --resource-group "$RG_NAME" \
+            --query "state" -o tsv)
+          echo "Smoke Test Function App state: $STATE"
           [ "$STATE" = "Running" ] || { echo "FAIL: state is $STATE"; exit 1; }
 
       - name: Verify functions deployed
@@ -323,8 +389,64 @@ jobs:
           echo "Deployed functions: $FUNCTIONS"
           [ "$FUNCTIONS" -ge 1 ] || { echo "FAIL: no functions deployed"; exit 1; }
 
-      - name: Smoke test summary
+      # Phase 2: Data-plane mTLS test via VNet-internal smoke test function
+      # The smoke test function runs inside the VNet and:
+      #   1. Fetches the client cert from Key Vault (Managed Identity + RBAC)
+      #   2. Makes an HTTPS POST with mTLS to the main function's private endpoint
+      #   3. Validates the response (status, body, headers)
+      - name: Invoke mTLS smoke test (VNet-internal)
+        env:
+          FUNC_NAME: ${{ needs.terraform-apply.outputs.smoke-test-name }}
+          RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
         run: |
-          echo "## Smoke Tests Passed" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Function App: Running" >> "$GITHUB_STEP_SUMMARY"
+          echo "Triggering VNet-internal mTLS smoke test..."
+
+          # Wait for cold start (Consumption plan may need a moment)
+          sleep 30
+
+          # Invoke the smoke test function via ARM master key
+          MASTER_KEY=$(az functionapp keys list \
+            --name "$FUNC_NAME" \
+            --resource-group "$RG_NAME" \
+            --query "masterKey" -o tsv)
+
+          HOSTNAME=$(az functionapp show \
+            --name "$FUNC_NAME" \
+            --resource-group "$RG_NAME" \
+            --query "defaultHostName" -o tsv)
+
+          RESULT=$(curl -s -w "\n%{http_code}" \
+            --max-time 60 \
+            "https://${HOSTNAME}/api/smoketest?code=${MASTER_KEY}")
+
+          HTTP_CODE=$(echo "$RESULT" | tail -1)
+          BODY=$(echo "$RESULT" | sed '$d')
+
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $BODY"
+          echo "$BODY" | jq .
+
+          # Check pass/fail
+          STATUS=$(echo "$BODY" | jq -r '.status')
+          if [ "$STATUS" != "pass" ]; then
+            echo "FAIL: Smoke test returned status=$STATUS"
+            echo "$BODY" | jq '.tests[] | select(.passed == false)'
+            exit 1
+          fi
+
+          echo "All mTLS smoke tests passed!"
+
+      - name: Smoke test summary
+        if: always()
+        run: |
+          echo "## Smoke Tests" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Control Plane" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Main Function App: Running" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Smoke Test Function App: Running" >> "$GITHUB_STEP_SUMMARY"
           echo "- Functions: Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Data Plane (VNet-Internal mTLS)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Key Vault cert fetch: Tested" >> "$GITHUB_STEP_SUMMARY"
+          echo "- mTLS API call: Tested" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Response validation: Tested" >> "$GITHUB_STEP_SUMMARY"

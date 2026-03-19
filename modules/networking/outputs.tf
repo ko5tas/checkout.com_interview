@@ -14,6 +14,7 @@ output "subnet_ids" {
     function          = azurerm_subnet.function.id
     private_endpoints = azurerm_subnet.private_endpoints.id
     apim              = azurerm_subnet.apim.id
+    smoke_test        = azurerm_subnet.smoke_test.id
   }
 }
 
@@ -23,5 +24,6 @@ output "nsg_ids" {
     function          = azurerm_network_security_group.function.id
     private_endpoints = azurerm_network_security_group.private_endpoints.id
     apim              = azurerm_network_security_group.apim.id
+    smoke_test        = azurerm_network_security_group.smoke_test.id
   }
 }

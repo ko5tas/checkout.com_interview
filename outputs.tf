@@ -18,6 +18,11 @@ output "key_vault_name" {
   value       = module.key_vault.key_vault_name
 }
 
+output "smoke_test_function_name" {
+  description = "Name of the smoke test Function App"
+  value       = module.smoke_test.function_app_name
+}
+
 output "log_analytics_workspace_id" {
   description = "Log Analytics Workspace ID"
   value       = module.observability.log_analytics_workspace_id

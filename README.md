@@ -15,6 +15,10 @@ graph TB
             FUNC["Azure Function App<br/>Go Custom Handler<br/>client_cert_mode=Required"]
         end
 
+        subgraph "snet-smoke-test (10.0.4.0/24)"
+            SMOKE["Smoke Test Function<br/>Go mTLS Client<br/>(CI-triggered probe)"]
+        end
+
         subgraph "snet-private-endpoints (10.0.2.0/24)"
             PE_KV["PE: Key Vault"]
             PE_BLOB["PE: Storage Blob"]
@@ -33,6 +37,9 @@ graph TB
 
     CLIENT["Internal Client<br/>(with mTLS cert)"] -->|"mTLS (CN validated)"| APIM
     APIM -->|"validate-client-certificate<br/>policy"| FUNC
+    SMOKE -->|"mTLS + client cert"| FUNC
+    SMOKE -->|"Managed Identity"| PE_KV
+    GH["GitHub Actions<br/>(ARM control plane)"] -->|"az functionapp<br/>function call"| SMOKE
     FUNC -->|"Managed Identity"| PE_KV
     FUNC -.->|"VNet Integration"| PE_BLOB
     PE_KV --> KV
@@ -50,7 +57,40 @@ graph TB
     style FUNC fill:#68217a,color:white
     style KV fill:#e74c3c,color:white
     style CLIENT fill:#2ecc71,color:white
+    style SMOKE fill:#f39c12,color:white
+    style GH fill:#333,color:white
 ```
+
+## VNet-Internal Smoke Testing with mTLS
+
+The API runs on a private network and requires mTLS, making it unreachable from GitHub Actions runners on the public internet. We solve this with a **split-plane testing** pattern:
+
+```
+GitHub Runner (public internet)
+  → az functionapp keys list (ARM control plane — always reachable)
+  → curl https://smoke-func.azurewebsites.net/api/smoketest?code=<key>
+    → Smoke Test Function (snet-smoke-test, inside VNet)
+      1. Fetches client cert + key from Key Vault (Managed Identity + RBAC)
+      2. Makes HTTPS POST with mTLS to main function's private endpoint
+      3. Validates: HTTP 200, response body schema, X-Request-ID header
+      → Returns structured JSON with pass/fail per test case
+  → GitHub Runner reads result, fails the pipeline if any test fails
+```
+
+**What this proves:**
+- VNet connectivity (smoke-test subnet → function subnet via private endpoint)
+- Private DNS resolution (privatelink.azurewebsites.net)
+- Key Vault RBAC + Managed Identity (cert retrieval)
+- mTLS handshake (client cert CN validation)
+- Go handler logic (payload processing, response format)
+- End-to-end latency under real network conditions
+
+**Cost:** ~$0/month (Consumption Y1 plan, only runs when CI triggers it)
+
+**Alternatives considered:**
+- Azure Container Instance (ACI): ephemeral but awkward VNet/DNS integration
+- Self-hosted runner in VNet: ~$15/month, overkill for this assessment
+- Azure Bastion: ~$140/month, far too expensive
 
 ## Design Decisions
 
@@ -363,9 +403,11 @@ gh secret delete AZURE_TENANT_ID
 
 | Resource | Monthly Cost |
 |----------|-------------|
-| Function App (Consumption Y1) | ~$0 (1M free executions) |
+| Function App — main (Consumption Y1) | ~$0 (1M free executions) |
+| Function App — smoke test (Consumption Y1) | ~$0 (runs only during CI) |
 | APIM Developer tier | ~$50 |
-| Storage Account (LRS) | ~$1 |
+| Storage Account — main (LRS) | ~$1 |
+| Storage Account — smoke test (LRS) | ~$1 |
 | Key Vault | ~$0.03/10K operations |
 | Log Analytics (5GB free) | ~$0 |
 | Application Insights (5GB free) | ~$0 |
