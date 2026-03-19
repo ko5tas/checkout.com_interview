@@ -34,17 +34,8 @@ variable "allowed_subnet_ids" {
   default     = []
 }
 
-variable "access_policies" {
-  description = "List of access policies for Key Vault"
-  type = list(object({
-    tenant_id               = string
-    object_id               = string
-    certificate_permissions = list(string)
-    key_permissions         = list(string)
-    secret_permissions      = list(string)
-  }))
-  default = []
-}
+  # access_policies removed — Key Vault now uses Azure RBAC (enable_rbac_authorization = true).
+  # Role assignments are managed via azurerm_role_assignment in the calling module.
 
 variable "tags" {
   description = "Tags to apply to all resources"

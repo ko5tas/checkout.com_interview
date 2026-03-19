@@ -22,5 +22,6 @@ output "nsg_ids" {
   value = {
     function          = azurerm_network_security_group.function.id
     private_endpoints = azurerm_network_security_group.private_endpoints.id
+    apim              = azurerm_network_security_group.apim.id
   }
 }

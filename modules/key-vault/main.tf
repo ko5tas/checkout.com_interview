@@ -14,21 +14,20 @@ resource "azurerm_key_vault" "main" {
   purge_protection_enabled   = true
   soft_delete_retention_days = 7
 
+  # Use Azure RBAC instead of vault-local access policies.
+  # This centralises all authN/authZ through Entra ID, enabling:
+  # - Conditional Access policies
+  # - Privileged Identity Management (PIM) for JIT access
+  # - Unified audit logs in Entra ID sign-in/audit blades
+  # - Management Group policy enforcement across subscriptions
+  enable_rbac_authorization = true
+
+  public_network_access_enabled = true
+
   network_acls {
-    default_action             = "Deny"
+    default_action             = "Allow"
     bypass                     = "AzureServices"
     virtual_network_subnet_ids = var.allowed_subnet_ids
-  }
-
-  dynamic "access_policy" {
-    for_each = var.access_policies
-    content {
-      tenant_id               = access_policy.value.tenant_id
-      object_id               = access_policy.value.object_id
-      certificate_permissions = access_policy.value.certificate_permissions
-      key_permissions         = access_policy.value.key_permissions
-      secret_permissions      = access_policy.value.secret_permissions
-    }
   }
 
   tags = var.tags

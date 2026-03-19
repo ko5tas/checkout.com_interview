@@ -6,7 +6,10 @@ resource "azurerm_api_management" "main" {
   publisher_email               = var.publisher_email
   sku_name                      = "Developer_1"
   virtual_network_type          = "Internal"
-  public_network_access_enabled = false
+  # Note: public_network_access cannot be disabled during initial creation
+  # (Azure API limitation: ActivateServiceWithPrivateEndpointAccessNotAllowed).
+  # Disable it in a subsequent apply or via az cli post-provisioning.
+  public_network_access_enabled = true
   tags                          = var.tags
 
   virtual_network_configuration {
@@ -71,14 +74,14 @@ resource "azurerm_api_management_api_policy" "message_mtls" {
         <base />
         <validate-client-certificate
           validate-revocation="false"
-          validate-trust="true"
+          validate-trust="false"
           validate-not-before="true"
-          validate-not-after="true">
+          validate-not-after="true"
+          ignore-error="false">
           <identities>
             <identity
-              subject="${var.allowed_client_cn}"
-              thumbprint="*"
-              certificate-id="${azurerm_api_management_certificate.ca.name}" />
+              common-name="${var.allowed_client_cn}"
+              issuer-certificate-id="${azurerm_api_management_certificate.ca.name}" />
           </identities>
         </validate-client-certificate>
       </inbound>

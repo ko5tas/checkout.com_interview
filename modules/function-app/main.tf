@@ -13,12 +13,18 @@ resource "azurerm_storage_account" "function" {
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
   min_tls_version                 = "TLS1_2"
-  public_network_access_enabled   = false
+  # NOTE: Consumption plan with GitHub-hosted runners requires public access for zip deploy.
+  # Production with Elastic Premium (EP1+) would use VNet-integrated self-hosted runners
+  # and set this to false. Private endpoints still provide in-VNet connectivity.
+  public_network_access_enabled   = true
   allow_nested_items_to_be_public = false
   tags                            = var.tags
 
+  # NOTE: Consumption plan Kudu runs in shared multi-tenant infra that doesn't
+  # qualify for AzureServices bypass. Must Allow for zip deploy and file share access.
+  # Production with EP1+ plan: set to Deny with VNet rules for the function subnet.
   network_rules {
-    default_action = "Deny"
+    default_action = "Allow"
     bypass         = ["AzureServices"]
   }
 
@@ -116,11 +122,15 @@ resource "azurerm_linux_function_app" "main" {
   service_plan_id               = azurerm_service_plan.main.id
   storage_account_name          = azurerm_storage_account.function.name
   storage_account_access_key    = azurerm_storage_account.function.primary_access_key
-  virtual_network_subnet_id     = var.function_subnet_id
   https_only                    = true
-  public_network_access_enabled = false
-  client_certificate_mode       = "Required"
-  tags                          = var.tags
+  # NOTE: Must be true for Consumption plan deployed from GitHub-hosted runners.
+  # mTLS (client_certificate_mode=Required) still enforces authentication.
+  # Production: set false with VNet-integrated EP1+ plan and self-hosted runners.
+  public_network_access_enabled                = true
+  client_certificate_mode                      = "Required"
+  webdeploy_publish_basic_authentication_enabled = true  # Required for config-zip deploy from GitHub Actions
+  ftp_publish_basic_authentication_enabled      = false  # FTP not needed
+  tags                                         = var.tags
 
   identity {
     type = "SystemAssigned"
@@ -130,32 +140,30 @@ resource "azurerm_linux_function_app" "main" {
     application_stack {
       use_custom_runtime = true
     }
-
-    vnet_route_all_enabled = true
   }
 
   app_settings = {
     "APPINSIGHTS_INSTRUMENTATIONKEY"        = var.app_insights_instrumentation_key
     "APPLICATIONINSIGHTS_CONNECTION_STRING" = var.app_insights_connection_string
-    "WEBSITE_CONTENTOVERVNET"               = "1"
+    "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.function.name};AccountKey=${azurerm_storage_account.function.primary_access_key};EndpointSuffix=core.windows.net"
+    "WEBSITE_CONTENTSHARE"                 = "func-${var.name_prefix}-content"
     "FUNCTIONS_WORKER_RUNTIME"              = "custom"
+    "WEBSITE_RUN_FROM_PACKAGE"             = "1"
   }
 }
 
-# --- Key Vault Access for Managed Identity ---
+# --- Key Vault RBAC for Managed Identity ---
+# Uses Entra ID RBAC instead of vault-local access policies.
+# "Key Vault Secrets User" grants Get/List on secrets and certificates.
 
-resource "azurerm_key_vault_access_policy" "function_app" {
-  key_vault_id = var.key_vault_id
-  tenant_id    = azurerm_linux_function_app.main.identity[0].tenant_id
-  object_id    = azurerm_linux_function_app.main.identity[0].principal_id
+resource "azurerm_role_assignment" "function_kv_secrets" {
+  scope                = var.key_vault_id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_linux_function_app.main.identity[0].principal_id
+}
 
-  secret_permissions = [
-    "Get",
-    "List",
-  ]
-
-  certificate_permissions = [
-    "Get",
-    "List",
-  ]
+resource "azurerm_role_assignment" "function_kv_certs" {
+  scope                = var.key_vault_id
+  role_definition_name = "Key Vault Certificate User"
+  principal_id         = azurerm_linux_function_app.main.identity[0].principal_id
 }
