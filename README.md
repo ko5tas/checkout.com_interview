@@ -387,7 +387,7 @@ gh secret delete AZURE_TENANT_ID
 - APIM Developer tier for full mTLS and VNet injection (production would evaluate Premium tier)
 - Function App Consumption plan (Y1) for cost; Premium plan needed for always-on VNet integration in production
 - Single region (West Europe); multi-region not in scope
-- Remote state documented but not pre-provisioned (run `bootstrap-state.sh` first)
+- Remote state documented but not pre-provisioned (run `bootstrap-state.sh` first). **Alternative approach:** the pipeline could create the state backend storage account using Terraform with local state on the ephemeral GitHub runner, then use `terraform state push` to migrate the local state into the newly created remote backend. This eliminates the `az` CLI bootstrap script entirely and keeps everything in Terraform, though it requires careful handling of the state migration step (init with local backend → apply → re-init with remote backend → push state).
 - Python/Node/Java alternatives considered; Go chosen for type safety and performance
 - `authLevel: "anonymous"` on Function App HTTP trigger because authentication is handled by mTLS at both APIM and Function App layers
 - **Centralised Entra ID RBAC for Key Vault** — Key Vault uses `enable_rbac_authorization = true` with Azure RBAC role assignments instead of vault-local access policies. This centralises all authN/authZ through Entra ID, enabling Conditional Access, PIM, unified audit logs, and Management Group policy enforcement.

@@ -138,6 +138,50 @@ jobs:
         if: always()
         run: pkill handler || true
 
+  # --- Smoke Test quality gate ---
+  smoke-test-quality:
+    name: Smoke Test Quality Gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: smoke-test-function
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: smoke-test-function/go.mod
+
+      - name: Go Build
+        run: go build -o handler .
+
+      - name: Go Vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          working-directory: smoke-test-function
+
+  smoke-test-vulncheck:
+    name: Smoke Test Vulnerability Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: smoke-test-function
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: smoke-test-function/go.mod
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./...
+
   # --- Terraform quality gate ---
   terraform-quality:
     name: Terraform Quality Gate
@@ -190,7 +234,7 @@ jobs:
   build:
     name: Build Artifacts
     runs-on: ubuntu-latest
-    needs: [go-quality, go-codeql, go-vulncheck, go-dast, terraform-quality]
+    needs: [go-quality, go-codeql, go-vulncheck, go-dast, smoke-test-quality, smoke-test-vulncheck, terraform-quality]
     steps:
       - uses: actions/checkout@v4
 

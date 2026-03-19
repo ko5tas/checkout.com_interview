@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "function-app/**"
+      - "smoke-test-function/**"
       - "tests/**"
       - ".golangci.yml"
       - ".github/workflows/go.yml"
@@ -12,6 +13,7 @@ on:
     branches: [main]
     paths:
       - "function-app/**"
+      - "smoke-test-function/**"
       - "tests/**"
       - ".golangci.yml"
       - ".github/workflows/go.yml"
@@ -70,6 +72,51 @@ jobs:
         with:
           name: go-coverage
           path: function-app/coverage.out
+
+  # --- Smoke Test Function quality ---
+  smoke-test-quality:
+    name: Smoke Test Quality
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: smoke-test-function
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: smoke-test-function/go.mod
+
+      - name: Go Build
+        run: go build -o handler .
+
+      - name: Go Vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          working-directory: smoke-test-function
+
+  # --- Smoke Test govulncheck ---
+  smoke-test-govulncheck:
+    name: Smoke Test Vulnerability Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: smoke-test-function
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: smoke-test-function/go.mod
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./...
 
   # --- SAST: CodeQL deep semantic analysis ---
   codeql:
