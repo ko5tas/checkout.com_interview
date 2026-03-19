@@ -279,13 +279,11 @@ func fetchClientCert(ctx context.Context, vaultURI string) (*tls.Config, error) 
 		return nil, fmt.Errorf("failed to create TLS key pair: %w", err)
 	}
 
-	// Build CA pool from the cert chain for server verification
-	// For self-signed certs, we skip server verification (InsecureSkipVerify)
-	// since the Function App uses Azure-managed TLS, not our self-signed CA
+	// Azure Function Apps use platform-managed TLS certs signed by DigiCert,
+	// which are in Go's default system CA pool. No need to skip verification.
 	return &tls.Config{
-		Certificates:       []tls.Certificate{tlsCert},
-		InsecureSkipVerify: true, //nolint:gosec // G402: Azure Function App uses platform-managed TLS cert, not our self-signed CA
-		MinVersion:         tls.VersionTLS12,
+		Certificates: []tls.Certificate{tlsCert},
+		MinVersion:   tls.VersionTLS12,
 	}, nil
 }
 
