@@ -25,6 +25,12 @@ resource "azurerm_storage_account" "smoke_test" {
     default_action = "Allow"
     bypass         = ["AzureServices"]
   }
+
+  blob_properties {
+    delete_retention_policy {
+      days = 7
+    }
+  }
 }
 
 # --- Service Plan ---
