@@ -123,9 +123,11 @@ resource "azurerm_linux_function_app" "main" {
   # NOTE: Must be true for Consumption plan deployed from GitHub-hosted runners.
   # mTLS (client_certificate_mode=Required) still enforces authentication.
   # Production: set false with VNet-integrated EP1+ plan and self-hosted runners.
-  public_network_access_enabled = true
-  client_certificate_mode       = "Required"
-  tags                          = var.tags
+  public_network_access_enabled                = true
+  client_certificate_mode                      = "Required"
+  webdeploy_publish_basic_authentication_enabled = true  # Required for config-zip deploy from GitHub Actions
+  ftp_publish_basic_authentication_enabled      = false  # FTP not needed
+  tags                                         = var.tags
 
   identity {
     type = "SystemAssigned"
