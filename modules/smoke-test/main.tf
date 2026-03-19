@@ -60,7 +60,7 @@ resource "azurerm_service_plan" "smoke_test" {
 resource "azurerm_linux_function_app" "smoke_test" {
   name                                           = "func-smoke-${var.name_prefix}"
   location                                       = var.location
-  resource_group_name                            = var.resource_group_name
+  resource_group_name                            = azurerm_resource_group.smoke_test.name
   service_plan_id                                = azurerm_service_plan.smoke_test.id
   storage_account_name                           = azurerm_storage_account.smoke_test.name
   storage_account_access_key                     = azurerm_storage_account.smoke_test.primary_access_key
