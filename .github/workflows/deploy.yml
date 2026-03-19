@@ -262,10 +262,12 @@ jobs:
           FUNC_NAME: ${{ needs.terraform-apply.outputs.function-app-name }}
           RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
         run: |
-          az functionapp deployment source config-zip \
+          az functionapp deploy \
             --name "$FUNC_NAME" \
             --resource-group "$RG_NAME" \
-            --src function-app.zip
+            --src-path function-app.zip \
+            --type zip \
+            --clean true
 
   # --- Smoke Tests (apply only) ---
   smoke-test:
