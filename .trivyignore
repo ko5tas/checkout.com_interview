@@ -1,0 +1,12 @@
+# Storage Account network rules: default_action = "Allow" is required for
+# Consumption plan (Y1) Function Apps deployed from GitHub-hosted runners.
+# The runners are on public IPs that change per run, making IP-based ACLs
+# impractical. Production with EP1+ plan and self-hosted runners would use
+# default_action = "Deny" with VNet rules.
+AZU-0012
+
+# Key Vault network ACL default_action = "Allow": same reason as above —
+# CI/CD service principal on GitHub-hosted runners needs data plane access
+# to write certificates. Production would use "Deny" with IP ACLs for
+# CI runner ranges or a self-hosted runner inside the VNet.
+AZU-0013
