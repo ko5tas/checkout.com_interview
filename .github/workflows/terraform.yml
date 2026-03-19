@@ -8,6 +8,8 @@ on:
       - "modules/**"
       - "environments/**"
       - ".tflint.hcl"
+      - ".trivyignore"
+      - ".checkov.yml"
       - ".github/workflows/terraform.yml"
   pull_request:
     branches: [main]
@@ -16,6 +18,8 @@ on:
       - "modules/**"
       - "environments/**"
       - ".tflint.hcl"
+      - ".trivyignore"
+      - ".checkov.yml"
       - ".github/workflows/terraform.yml"
 
 permissions:
