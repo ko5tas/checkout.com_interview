@@ -53,3 +53,8 @@ skip-check:
   # Key Vault firewall: default_action=Allow required for CI/CD SP on
   # GitHub-hosted runners (dynamic IPs). Production would use Deny + IP ACLs.
   - CKV_AZURE_109 # Ensure that key vault allows firewall rules settings
+
+  # Smoke test storage account intentionally has no private endpoints —
+  # it's lightweight CI tooling, not a data store. Adding PEs would
+  # increase cost and complexity for zero security benefit.
+  - CKV2_AZURE_33 # Ensure storage account is configured with private endpoint
