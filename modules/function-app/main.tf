@@ -140,10 +140,10 @@ resource "azurerm_linux_function_app" "main" {
   app_settings = {
     "APPINSIGHTS_INSTRUMENTATIONKEY"        = var.app_insights_instrumentation_key
     "APPLICATIONINSIGHTS_CONNECTION_STRING" = var.app_insights_connection_string
-    "WEBSITE_CONTENTOVERVNET"               = "1"
     "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.function.name};AccountKey=${azurerm_storage_account.function.primary_access_key};EndpointSuffix=core.windows.net"
     "WEBSITE_CONTENTSHARE"                 = "func-${var.name_prefix}-content"
     "FUNCTIONS_WORKER_RUNTIME"              = "custom"
+    "WEBSITE_RUN_FROM_PACKAGE"             = "1"
   }
 }
 

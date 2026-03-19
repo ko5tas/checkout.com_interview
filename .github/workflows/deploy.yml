@@ -257,27 +257,15 @@ jobs:
         with:
           name: function-app
 
-      - name: Get publish profile
-        id: publish-profile
+      - name: Deploy to Function App
         env:
           FUNC_NAME: ${{ needs.terraform-apply.outputs.function-app-name }}
           RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
         run: |
-          PROFILE=$(az functionapp deployment list-publishing-profiles \
+          az functionapp deployment source config-zip \
             --name "$FUNC_NAME" \
             --resource-group "$RG_NAME" \
-            --xml)
-          echo "::add-mask::$PROFILE"
-          echo "profile<<EOFPROFILE" >> "$GITHUB_OUTPUT"
-          echo "$PROFILE" >> "$GITHUB_OUTPUT"
-          echo "EOFPROFILE" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy to Function App
-        uses: Azure/functions-action@v1
-        with:
-          app-name: ${{ needs.terraform-apply.outputs.function-app-name }}
-          package: function-app.zip
-          publish-profile: ${{ steps.publish-profile.outputs.profile }}
+            --src function-app.zip
 
   # --- Smoke Tests (apply only) ---
   smoke-test:
