@@ -13,7 +13,10 @@ resource "azurerm_storage_account" "function" {
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
   min_tls_version                 = "TLS1_2"
-  public_network_access_enabled   = false
+  # NOTE: Consumption plan with GitHub-hosted runners requires public access for zip deploy.
+  # Production with Elastic Premium (EP1+) would use VNet-integrated self-hosted runners
+  # and set this to false. Private endpoints still provide in-VNet connectivity.
+  public_network_access_enabled   = true
   allow_nested_items_to_be_public = false
   tags                            = var.tags
 
@@ -117,7 +120,10 @@ resource "azurerm_linux_function_app" "main" {
   storage_account_name          = azurerm_storage_account.function.name
   storage_account_access_key    = azurerm_storage_account.function.primary_access_key
   https_only                    = true
-  public_network_access_enabled = false
+  # NOTE: Must be true for Consumption plan deployed from GitHub-hosted runners.
+  # mTLS (client_certificate_mode=Required) still enforces authentication.
+  # Production: set false with VNet-integrated EP1+ plan and self-hosted runners.
+  public_network_access_enabled = true
   client_certificate_mode       = "Required"
   tags                          = var.tags
 
