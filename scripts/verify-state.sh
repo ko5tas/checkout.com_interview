@@ -5,7 +5,7 @@
 # deployment failure: stale state causing "already exists" or "404" errors.
 #
 # Usage:
-#   STATE_RG=rg-tfstate-uksouth STATE_SA=sttfstatede4c37db \
+#   STATE_RG=rg-tfstate-westeurope STATE_SA=sttfstate964b29c3 \
 #   STATE_KEY=checkout-dev.tfstate TARGET_RG=rg-checkout-dev \
 #   ./scripts/verify-state.sh
 #

@@ -249,7 +249,7 @@ terraform destroy -var-file=environments/dev.tfvars
 
 **Manual steps:**
 - Key Vault with purge protection requires manual purge after the soft-delete retention period (7 days)
-- If bootstrap state backend is no longer needed: `az group delete --name rg-tfstate-uksouth`
+- If bootstrap state backend is no longer needed: `az group delete --name rg-tfstate-westeurope`
 
 ## OIDC Configuration for GitHub Actions
 
@@ -439,7 +439,7 @@ gh secret delete AZURE_TENANT_ID
    - Running `terraform destroy` on the existing UK South infrastructure
    - Fixing the azurerm provider to set `prevent_deletion_if_contains_resources = false` in the `resource_group` feature block — Azure auto-creates Smart Detection alert rules and action groups inside resource groups containing Application Insights, and these orphaned resources block Terraform's resource group deletion
    - **Manual step:** Deleting the `NetworkWatcher_uksouth` resource from the `NetworkWatcherRG` resource group via the Azure Portal. This is an Azure-auto-created free diagnostic resource that is not managed by Terraform and was no longer needed after the region move. The `NetworkWatcherRG` resource group itself was also deleted.
-   - The Terraform state backend (`rg-tfstate-uksouth` / `sttfstatede4c37db`) was intentionally kept in UK South — it stores state files for all environments and incurs negligible cost (~£0.01/month for blob storage).
+   - The Terraform state backend (`rg-tfstate-westeurope` / `sttfstate964b29c3`) was intentionally kept in UK South — it stores state files for all environments and incurs negligible cost (~£0.01/month for blob storage).
 
 5. **Nightly schedule destroys state backend too.** The `schedule.yml` nightly destroy not only runs `terraform destroy` on application resources but also cleans up the dev state blob and, if no other environments exist, deletes the state storage account itself — eliminating all residual cost.
 

@@ -26,8 +26,8 @@ Run this BEFORE every `terraform apply` — in CI or locally:
 set -euo pipefail
 
 # Configuration
-STATE_RG="${STATE_RG:-rg-tfstate-uksouth}"
-STATE_SA="${STATE_SA:-sttfstatede4c37db}"
+STATE_RG="${STATE_RG:-rg-tfstate-westeurope}"
+STATE_SA="${STATE_SA:-sttfstate964b29c3}"
 STATE_CONTAINER="${STATE_CONTAINER:-tfstate}"
 STATE_KEY="${STATE_KEY:-checkout-dev.tfstate}"
 TARGET_RG="${TARGET_RG:-rg-checkout-dev}"
@@ -129,7 +129,7 @@ Another discovered failure mode: nightly destroy or budget-guard workflows may d
 
 ```
 Error: Failed to get existing workspaces: storage.AccountsClient#ListKeys:
-StatusCode=404 -- Original Error: Resource group 'rg-tfstate-uksouth' could not be found.
+StatusCode=404 -- Original Error: Resource group 'rg-tfstate-westeurope' could not be found.
 ```
 
 **Prevention:** The verify script checks the state backend RG exists as its first step and fails fast with a clear message to re-bootstrap. Scheduled destroy workflows should NEVER delete the state backend unless explicitly configured to do so.

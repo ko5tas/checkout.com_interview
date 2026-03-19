@@ -109,7 +109,7 @@ jobs:
       - name: Break stale state lock if needed
         run: |
           LOCK_INFO=$(az storage blob show \
-            --account-name "sttfstatede4c37db" \
+            --account-name "sttfstate964b29c3" \
             --container-name "tfstate" \
             --name "checkout-dev.tfstate" \
             --query "properties.lease.status" \
@@ -119,7 +119,7 @@ jobs:
             az storage blob lease break \
               --blob-name "checkout-dev.tfstate" \
               --container-name "tfstate" \
-              --account-name "sttfstatede4c37db" \
+              --account-name "sttfstate964b29c3" \
               --auth-mode login
           fi
 
@@ -184,14 +184,14 @@ jobs:
           # Delete the dev state blob (not the whole container — prod state may live here too)
           echo "Deleting dev state blob..."
           az storage blob delete \
-            --account-name "sttfstatede4c37db" \
+            --account-name "sttfstate964b29c3" \
             --container-name "tfstate" \
             --name "checkout-dev.tfstate" \
             --auth-mode login 2>/dev/null || echo "State blob already deleted"
 
           # Check if any other state files remain in the container
           BLOB_COUNT=$(az storage blob list \
-            --account-name "sttfstatede4c37db" \
+            --account-name "sttfstate964b29c3" \
             --container-name "tfstate" \
             --auth-mode login \
             --query "length([?ends_with(name, '.tfstate')])" \
@@ -200,7 +200,7 @@ jobs:
           if [ "$BLOB_COUNT" = "0" ]; then
             echo "No other state files remain — deleting state backend resources..."
             az group delete \
-              --name "rg-tfstate-uksouth" \
+              --name "rg-tfstate-westeurope" \
               --yes \
               --no-wait
             echo "State backend resource group deletion initiated (async)."

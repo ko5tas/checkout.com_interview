@@ -21,8 +21,8 @@ provider "random" {}
 # giving each environment its own state file in the same container.
 terraform {
   backend "azurerm" {
-    resource_group_name  = "rg-tfstate-uksouth"
-    storage_account_name = "sttfstatede4c37db"
+    resource_group_name  = "rg-tfstate-westeurope"
+    storage_account_name = "sttfstate964b29c3"
     container_name       = "tfstate"
     use_oidc             = true
   }

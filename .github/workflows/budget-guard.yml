@@ -172,14 +172,14 @@ jobs:
         run: |
           # Delete dev state blob
           az storage blob delete \
-            --account-name "sttfstatede4c37db" \
+            --account-name "sttfstate964b29c3" \
             --container-name "tfstate" \
             --name "checkout-dev.tfstate" \
             --auth-mode login 2>/dev/null || true
 
           # Check if other state files exist
           BLOB_COUNT=$(az storage blob list \
-            --account-name "sttfstatede4c37db" \
+            --account-name "sttfstate964b29c3" \
             --container-name "tfstate" \
             --auth-mode login \
             --query "length([?ends_with(name, '.tfstate')])" \
@@ -187,7 +187,7 @@ jobs:
 
           if [ "$BLOB_COUNT" = "0" ]; then
             echo "No other state files — deleting state backend"
-            az group delete --name "rg-tfstate-uksouth" --yes --no-wait
+            az group delete --name "rg-tfstate-westeurope" --yes --no-wait
           fi
 
       - name: Open issue documenting the teardown

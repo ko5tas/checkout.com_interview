@@ -131,8 +131,8 @@ jobs:
 
       - name: Verify State Alignment
         env:
-          STATE_RG: rg-tfstate-uksouth
-          STATE_SA: sttfstatede4c37db
+          STATE_RG: rg-tfstate-westeurope
+          STATE_SA: sttfstate964b29c3
           STATE_KEY: checkout-${{ inputs.environment }}.tfstate
           TARGET_RG: rg-checkout-${{ inputs.environment }}
         run: bash scripts/verify-state.sh
@@ -244,7 +244,7 @@ jobs:
         if: inputs.action == 'apply'
         env:
           TARGET_RG: rg-checkout-${{ inputs.environment }}
-          STATE_SA: sttfstatede4c37db
+          STATE_SA: sttfstate964b29c3
           STATE_CONTAINER: tfstate
           STATE_KEY: checkout-${{ inputs.environment }}.tfstate
         run: |

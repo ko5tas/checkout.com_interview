@@ -16,7 +16,7 @@ Terraform needs a backend to store state, but that backend (Azure Storage Accoun
 set -euo pipefail
 
 SA_NAME="sttfstate$(openssl rand -hex 4)"  # Globally unique
-az group create --name "rg-tfstate-uksouth" --location uksouth
+az group create --name "rg-tfstate-westeurope" --location uksouth
 az storage account create \
   --name "${SA_NAME}" \
   --sku Standard_LRS \
@@ -45,7 +45,7 @@ az storage container create --name tfstate --account-name "${SA_NAME}" --auth-mo
 ```hcl
 terraform {
   backend "azurerm" {
-    resource_group_name  = "rg-tfstate-uksouth"
+    resource_group_name  = "rg-tfstate-westeurope"
     storage_account_name = "<from bootstrap output>"
     container_name       = "tfstate"
     key                  = "project-name.terraform.tfstate"
