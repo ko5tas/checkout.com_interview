@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - "function-app/**"
+      - "tests/**"
       - ".golangci.yml"
       - ".github/workflows/go.yml"
   pull_request:
     branches: [main]
     paths:
       - "function-app/**"
+      - "tests/**"
       - ".golangci.yml"
       - ".github/workflows/go.yml"
 
