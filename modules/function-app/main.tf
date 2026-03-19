@@ -130,6 +130,7 @@ resource "azurerm_linux_function_app" "main" {
   client_certificate_mode                        = "Required"
   webdeploy_publish_basic_authentication_enabled = true  # Required for config-zip deploy from GitHub Actions
   ftp_publish_basic_authentication_enabled       = false # FTP not needed
+  virtual_network_subnet_id                      = var.function_subnet_id
   tags                                           = var.tags
 
   identity {
