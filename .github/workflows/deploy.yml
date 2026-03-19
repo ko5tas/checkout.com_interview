@@ -93,6 +93,14 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Verify State Alignment
+        env:
+          STATE_RG: rg-tfstate-uksouth
+          STATE_SA: sttfstatede4c37db
+          STATE_KEY: checkout-${{ inputs.environment }}.tfstate
+          TARGET_RG: rg-checkout-${{ inputs.environment }}
+        run: bash scripts/verify-state.sh
+
       - name: Terraform Init
         env:
           ENVIRONMENT: ${{ inputs.environment }}
@@ -191,6 +199,14 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify State Alignment
+        env:
+          STATE_RG: rg-tfstate-uksouth
+          STATE_SA: sttfstatede4c37db
+          STATE_KEY: checkout-${{ inputs.environment }}.tfstate
+          TARGET_RG: rg-checkout-${{ inputs.environment }}
+        run: bash scripts/verify-state.sh
 
       - name: Terraform Init
         env:
