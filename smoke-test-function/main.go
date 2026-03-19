@@ -72,7 +72,7 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	log.Printf("Smoke test function starting on %s", addr)
+	log.Printf("Smoke test function starting on %s", addr) //nolint:gosec // G706: addr is from FUNCTIONS_CUSTOMHANDLER_PORT, set by Azure runtime — not user-controlled
 	log.Fatal(srv.ListenAndServe())
 }
 
@@ -130,7 +130,7 @@ func handleSmokeTest(w http.ResponseWriter, r *http.Request) {
 	payload := map[string]string{"message": "smoke-test-probe"}
 	body, _ := json.Marshal(payload)
 
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, targetURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, targetURL, bytes.NewReader(body)) //nolint:gosec // G704: targetURL is from a trusted env var (TARGET_FUNCTION_HOSTNAME), not user input
 	if err != nil {
 		result.Tests = append(result.Tests, TestCase{
 			Name:   "mtls_api_call",
@@ -143,7 +143,7 @@ func handleSmokeTest(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704: request URL from trusted env var, not user input
 	if err != nil {
 		result.Tests = append(result.Tests, TestCase{
 			Name:   "mtls_api_call",
@@ -155,7 +155,7 @@ func handleSmokeTest(w http.ResponseWriter, r *http.Request) {
 		writeResult(w, result, start)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 
@@ -254,9 +254,10 @@ func fetchClientCert(ctx context.Context, vaultURI string) (*tls.Config, error) 
 		if block == nil {
 			break
 		}
-		if block.Type == "CERTIFICATE" {
+		switch block.Type {
+		case "CERTIFICATE":
 			certPEMBlocks = append(certPEMBlocks, pem.EncodeToMemory(block)...)
-		} else if block.Type == "PRIVATE KEY" || block.Type == "RSA PRIVATE KEY" || block.Type == "EC PRIVATE KEY" {
+		case "PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY":
 			keyPEMBlock = pem.EncodeToMemory(block)
 		}
 	}
