@@ -116,7 +116,6 @@ resource "azurerm_linux_function_app" "main" {
   service_plan_id               = azurerm_service_plan.main.id
   storage_account_name          = azurerm_storage_account.function.name
   storage_account_access_key    = azurerm_storage_account.function.primary_access_key
-  virtual_network_subnet_id     = var.function_subnet_id
   https_only                    = true
   public_network_access_enabled = false
   client_certificate_mode       = "Required"
@@ -130,8 +129,6 @@ resource "azurerm_linux_function_app" "main" {
     application_stack {
       use_custom_runtime = true
     }
-
-    vnet_route_all_enabled = true
   }
 
   app_settings = {

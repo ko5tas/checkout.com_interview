@@ -373,7 +373,7 @@ gh secret delete AZURE_TENANT_ID
 2. **Budget set to exact remaining credits.** We created an Azure budget (`free-trial-guard`) set to £147.77 with email notifications at 80% and 100% thresholds via the Cost Management REST API. This prevents silent overspend.
 
 3. **Daily Budget Guard workflow** (`budget-guard.yml`). Runs daily at 07:23 UTC and checks two conditions:
-   - **Credit expiry date** — configured via `CREDIT_EXPIRY_DATE` repo variable (default: 2026-04-17, 30 days from signup)
+   - **Credit expiry date** — configured via `CREDIT_EXPIRY_DATE` repo variable (set to 2026-04-16, matching Azure portal credit expiry)
    - **Cumulative spend** — queries the Cost Management API and compares against the budget amount
 
    If either condition is true, the workflow automatically:
@@ -392,6 +392,91 @@ gh secret delete AZURE_TENANT_ID
    - The Terraform state backend (`rg-tfstate-uksouth` / `sttfstatede4c37db`) was intentionally kept in UK South — it stores state files for all environments and incurs negligible cost (~£0.01/month for blob storage).
 
 5. **Nightly schedule destroys state backend too.** The `schedule.yml` nightly destroy not only runs `terraform destroy` on application resources but also cleans up the dev state blob and, if no other environments exist, deletes the state storage account itself — eliminating all residual cost.
+
+6. **Stale Terraform state from failed partial applies.** When a `terraform apply` partially succeeds (e.g., creates a resource group and storage account, then fails on APIM), and you subsequently run `terraform destroy` which deletes the resource group, the state file retains references to resources that no longer exist. The next `apply` fails with `404 Not Found` errors. **Lesson learned:** before re-applying after a destroy that followed a partial apply, verify state is clean — either run `terraform state list` to check, or delete the state blob for a fresh start. In our case, we deleted `checkout-dev.tfstate` from the state backend storage account, then also had to manually delete the orphaned `rg-checkout-dev` resource group that Azure had recreated during the partial apply.
+
+### Cost Optimisation: Improvements & Recommendations
+
+The following recommendations are informed by the [Azure Well-Architected Framework — Cost Optimisation pillar](https://learn.microsoft.com/en-us/azure/well-architected/pillars), real-world lessons from this assessment, and industry FinOps best practices.
+
+#### 1. Shift-Left Cost Estimation with Infracost
+
+**Problem:** Engineers don't see cost impact until after deployment — by then, expensive resources like APIM Developer ($50/month), Azure Firewall Basic ($288/month), or ExpressRoute ($900+/month) are already provisioned and burning budget.
+
+**Solution:** Integrate [Infracost](https://www.infracost.io/) into the CI pipeline. Infracost analyses `terraform plan` output and posts a PR comment showing estimated monthly cost *before* any resources are created. It supports 1,100+ Terraform resources across Azure, AWS, and GCP.
+
+```yaml
+# Example: .github/workflows/infracost.yml
+- uses: infracost/actions/setup@v3
+  with:
+    api-key: ${{ secrets.INFRACOST_API_KEY }}
+- run: infracost diff --path=. --format=json --out-file=/tmp/infracost.json
+- uses: infracost/actions/comment@v3
+  with:
+    path: /tmp/infracost.json
+    behavior: update
+```
+
+**Impact:** Every PR gets a cost annotation. A developer adding `azurerm_firewall` would immediately see "+$912/month" in the PR — before it reaches `main`.
+
+#### 2. Azure Budget Blowers: A Reference Guide
+
+Certain Azure resources carry disproportionately high costs that can silently exhaust a dev/test budget. Engineers should be aware of these before including them in Terraform configs:
+
+| Resource | Hourly Cost | Monthly Cost | Dev/Test Alternative |
+|----------|------------|-------------|---------------------|
+| **Azure Firewall Premium** | $1.84 | ~$1,300 | NSG rules + Azure Firewall Basic ($288/mo) or NSGs only |
+| **Azure Firewall Standard** | $1.25 | ~$912 | Azure Firewall Basic or NSGs |
+| **Azure Firewall Basic** | $0.395 | ~$288 | NSGs (free) for dev/test |
+| **ExpressRoute (Standard)** | — | ~$900+ | VPN Gateway Basic ($27/mo) or site-to-site VPN |
+| **Application Gateway v2** | $0.246 | ~$180 | Stop/deallocate during off-hours ($0 when stopped) |
+| **NAT Gateway** | $0.045 | ~$32 + data | Remove in dev; use default SNAT |
+| **APIM Developer** | $0.067 | ~$50 | APIM Consumption (free for first 1M calls) |
+| **APIM Premium** | $2.78 | ~$2,000 | APIM Developer for non-prod |
+| **Azure SQL (General Purpose)** | — | ~$370+ | Basic tier ($5/mo) or SQL Server on container |
+| **Private Endpoints** | $0.01 | ~$7.50 each | Acceptable, but multiply quickly (5×$7.50 = $37.50) |
+
+> ⚠️ **Key lesson from this project:** APIM Developer tier takes 30-45 minutes to provision. A failed Terraform apply that creates APIM then fails on a subsequent resource means you've burned 45 minutes of APIM cost *and* need to destroy/recreate. Always validate your full config with `terraform plan` and fix ALL errors before running `apply`.
+
+#### 3. Preventing Wasteful Deploy Cycles
+
+Our experience during this assessment exposed a pattern that wastes both time and money:
+
+```
+apply (partial success) → fix error → destroy (fails on orphans) →
+fix provider → destroy (succeeds) → apply (stale state) →
+clean state → apply (orphaned RG) → delete RG → apply (finally works)
+```
+
+**Mitigation strategies:**
+
+- **Pre-flight validation:** Run `terraform validate` and `terraform plan` in CI before any `apply`. Gate `apply` behind a successful plan.
+- **Targeted applies for expensive resources:** Use `terraform apply -target=module.networking` first, then `-target=module.function_app`, then `-target=module.api_management`. This isolates failures and avoids re-provisioning expensive resources.
+- **Idempotent destroy:** Configure the azurerm provider with `prevent_deletion_if_contains_resources = false` from the start — Azure auto-creates resources (Smart Detection alerts, NetworkWatcher) that block idempotent destroys.
+- **State hygiene:** After a failed partial apply followed by a manual cleanup, always verify state with `terraform state list` before re-applying. Orphaned state entries cause `404` errors; orphaned Azure resources cause `already exists` errors.
+- **Cost-aware retry limits:** Set a maximum retry count for deploy workflows. After N failures, stop retrying and alert — don't keep creating and destroying expensive resources in a loop.
+
+#### 4. Architectural Patterns for Cost Control
+
+- **Module isolation:** Structure Terraform modules so expensive resources (APIM, Firewall) are in their own state files or have clear dependency boundaries. This allows targeted operations without touching the full stack.
+- **Feature flags via variables:** Use `enable_apim = false` type variables to skip expensive resources in dev/test, allowing engineers to test networking and function app logic without provisioning APIM.
+- **Consumption over Dedicated:** Prefer Azure Functions Consumption plan, APIM Consumption tier, and serverless options wherever feature parity allows. The cost difference can be 10-100x.
+- **Auto-shutdown schedules:** This project implements nightly destroy (02:00-09:00). For resources that can be stopped without destruction (VMs, Application Gateways), prefer stop/deallocate over full destroy to save re-provisioning time.
+- **Budget alerts at multiple thresholds:** We set alerts at 80% and 100%. Production should add 50% and 25% thresholds with automated scaling-down actions at each tier.
+
+#### 5. FinOps Culture: Making Cost a First-Class Citizen
+
+- **Tag everything:** Every resource should have `cost_center`, `environment`, and `owner` tags for attribution and automated cleanup.
+- **Daily cost review:** The Budget Guard workflow runs daily, but engineers should also have visibility via Azure Cost Management dashboards scoped to their resource groups.
+- **Post-mortem on cost incidents:** When a deploy cycle wastes money (as happened during our region migration), document it as a decision log entry (see entries #4 and #6 above) so the team learns from it.
+- **Right-size continuously:** Azure Advisor provides right-sizing recommendations. Review them weekly in non-prod, monthly in prod.
+
+> 📚 **Further reading:**
+> - [Azure Well-Architected Framework — Cost Optimisation](https://learn.microsoft.com/en-us/azure/well-architected/pillars)
+> - [APIM Cost Optimisation Guide](https://learn.microsoft.com/en-us/azure/well-architected/service-guides/api-management/cost-optimization)
+> - [Infracost — Shift FinOps Left](https://www.infracost.io/)
+> - [Azure Firewall Pricing](https://azure.microsoft.com/en-us/pricing/details/azure-firewall/)
+> - [HCP Terraform Cost Estimation](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/cost-estimation)
 
 ## AI Usage & Critique
 
