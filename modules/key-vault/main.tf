@@ -20,7 +20,7 @@ resource "azurerm_key_vault" "main" {
   # - Privileged Identity Management (PIM) for JIT access
   # - Unified audit logs in Entra ID sign-in/audit blades
   # - Management Group policy enforcement across subscriptions
-  enable_rbac_authorization = true
+  rbac_authorization_enabled = true
 
   public_network_access_enabled = true
 
