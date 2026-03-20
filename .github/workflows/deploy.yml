@@ -342,13 +342,17 @@ jobs:
           FUNC_NAME: ${{ needs.terraform-apply.outputs.function-app-name }}
           RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
         run: |
-          az functionapp deploy \
+          # Set linuxFxVersion for custom Go handler before zip deploy
+          az functionapp config set \
             --name "$FUNC_NAME" \
             --resource-group "$RG_NAME" \
-            --src-path function-app.zip \
-            --type zip \
-            --clean true \
-            --restart true \
+            --linux-fx-version "CUSTOM|" \
+            --output none 2>/dev/null || true
+          az functionapp deployment source config-zip \
+            --name "$FUNC_NAME" \
+            --resource-group "$RG_NAME" \
+            --src function-app.zip \
+            --build-remote false \
             --timeout 300
           echo "Main function deployed!"
 
@@ -357,13 +361,16 @@ jobs:
           FUNC_NAME: ${{ needs.terraform-apply.outputs.smoke-test-name }}
           RG_NAME: ${{ needs.terraform-apply.outputs.smoke-test-rg }}
         run: |
-          az functionapp deploy \
+          az functionapp config set \
             --name "$FUNC_NAME" \
             --resource-group "$RG_NAME" \
-            --src-path smoke-test.zip \
-            --type zip \
-            --clean true \
-            --restart true \
+            --linux-fx-version "CUSTOM|" \
+            --output none 2>/dev/null || true
+          az functionapp deployment source config-zip \
+            --name "$FUNC_NAME" \
+            --resource-group "$RG_NAME" \
+            --src smoke-test.zip \
+            --build-remote false \
             --timeout 300
           echo "Smoke test function deployed!"
 
