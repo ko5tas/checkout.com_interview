@@ -105,6 +105,32 @@ sequenceDiagram
     Note over C,KV: Two independent validation layers:<br/>1. APIM policy (gateway)<br/>2. Function App code (application)
 ```
 
+## Compliance Mapping
+
+This implementation was designed with payment industry compliance frameworks in mind. The table below maps architectural decisions to specific controls, demonstrating that each technical choice serves a compliance purpose — not just a functional one.
+
+| Control Area | PCI DSS 4.0.1 | NIST CSF 2.0 | What We Implement |
+|---|---|---|---|
+| **Network Segmentation** | Req 1.3 — Restrict CDE traffic | PR.DS — Data Security | NSG microsegmentation with explicit subnet CIDRs and ports; deny-all default rules; no `VirtualNetwork` catch-all |
+| **Encryption in Transit** | Req 4.2 — Strong cryptography | PR.DS-2 — Data-in-transit | mTLS end-to-end: client → APIM (cert validation policy) → Function App (application-level verification). TLS 1.2 minimum |
+| **Defense in Depth** | Req 1.2 + 6.2 — Layered controls | PR.PT — Protective Technology | Two independent certificate validation layers (APIM gateway + Function App code). Neither trusts the other |
+| **Least Privilege Access** | Req 7.2 — Need-to-know | PR.AC — Access Control | Managed Identity with scoped RBAC roles (Key Vault Secrets User, not Contributor). No access policies, no stored credentials |
+| **Identity & Authentication** | Req 8.3 — Strong authentication | PR.AC-7 — Authentication | OIDC federation from GitHub Actions to Azure (no client secrets). Entra ID RBAC for all service-to-service auth |
+| **Logging & Monitoring** | Req 10.2 — Audit trail | DE.CM — Continuous Monitoring | Diagnostic settings on all resources → Log Analytics. Application Insights for function telemetry. X-Request-ID for tracing |
+| **Secure Development** | Req 6.3 — Security in SDLC | PR.IP — Protective Processes | `go vet`, `golangci-lint`, `govulncheck`, `go test -race` in CI. Trivy for Terraform scanning. PR-based changes with branch protection |
+| **IaC Governance** | Req 6.5 — Change management | GV.OC — Organisational Context | All infrastructure defined in Terraform. Plan → AI analysis → manual approval → apply. No ad-hoc changes |
+| **Asset Inventory** | Req 12.5 — Asset management | ID.AM — Asset Management | Terraform state as machine-readable asset inventory. Subnet/service mapping in architecture diagram |
+| **Recoverability** | Req 12.10 — Incident response | RC.RP — Recovery Planning | Terraform state enables full environment rebuild. Nightly destroy/recreate cycle proves recoverability daily |
+
+**Production hardening (documented as future improvements):**
+- NSG flow logs for Req 10.4 (network traffic audit trail)
+- Azure Policy for continuous compliance auditing (Req 6.3.2)
+- Customer-managed keys for state file encryption at rest (Req 3.5)
+- WAF integration at APIM tier for OWASP protection (Req 6.4)
+- Penetration testing schedule (Req 11.3)
+
+> This architecture aligns with [NIST SP 800-207 Zero Trust](https://www.nist.gov/publications/zero-trust-architecture) principles: never trust, always verify (mTLS at two layers), microsegmentation (explicit NSG rules), least privilege (scoped RBAC), and assume breach (defense-in-depth). It also reflects [Checkout.com's published engineering philosophy](https://spacelift.io/blog/platform-engineering-infrastructure-automation) of "IaC for everything" within regulated environment constraints.
+
 ## VNet-Internal Smoke Testing with mTLS
 
 The API runs on a private network and requires mTLS, making it unreachable from GitHub Actions runners on the public internet. We solve this with a **split-plane testing** pattern:
