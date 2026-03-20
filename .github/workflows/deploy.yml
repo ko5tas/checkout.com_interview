@@ -133,7 +133,7 @@ jobs:
         env:
           STATE_RG: rg-tfstate-westeurope
           STATE_SA: sttfstate202603
-          STATE_KEY: checkout-${{ inputs.environment }}.tfstate
+          STATE_KEY: cko-${{ inputs.environment }}.tfstate
           TARGET_RG: rg-cko-${{ inputs.environment }}
         run: bash scripts/verify-state.sh
 
@@ -249,7 +249,7 @@ jobs:
           TARGET_RG: rg-cko-${{ inputs.environment }}
           STATE_SA: sttfstate202603
           STATE_CONTAINER: tfstate
-          STATE_KEY: checkout-${{ inputs.environment }}.tfstate
+          STATE_KEY: cko-${{ inputs.environment }}.tfstate
         run: |
           STATE_SIZE=$(az storage blob show \
             --account-name "$STATE_SA" --container-name "$STATE_CONTAINER" \
