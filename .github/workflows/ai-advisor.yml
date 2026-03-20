@@ -158,15 +158,30 @@ jobs:
           url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
           req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
 
-          try:
-              with urllib.request.urlopen(req, timeout=60) as resp:
-                  result = json.loads(resp.read())
-                  text = result["candidates"][0]["content"]["parts"][0]["text"]
+          import time
+          max_retries = 3
+          for attempt in range(max_retries):
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as resp:
+                      result = json.loads(resp.read())
+                      text = result["candidates"][0]["content"]["parts"][0]["text"]
+                      with open("ai-report.md", "w") as f:
+                          f.write(text)
+                  break
+              except urllib.error.HTTPError as e:
+                  if e.code == 429 and attempt < max_retries - 1:
+                      wait = 2 ** (attempt + 1) * 10  # 20s, 40s
+                      print(f"Rate limited (429), retrying in {wait}s (attempt {attempt + 1}/{max_retries})")
+                      time.sleep(wait)
+                      req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+                  else:
+                      with open("ai-report.md", "w") as f:
+                          f.write(f"*AI analysis failed: {e}*")
+                      break
+              except Exception as e:
                   with open("ai-report.md", "w") as f:
-                      f.write(text)
-          except Exception as e:
-              with open("ai-report.md", "w") as f:
-                  f.write(f"*AI analysis failed: {e}*")
+                      f.write(f"*AI analysis failed: {e}*")
+                  break
           PYSCRIPT
 
       # --- Create or update GitHub Issue ---
