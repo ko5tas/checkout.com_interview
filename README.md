@@ -63,6 +63,48 @@ graph TB
     style GH fill:#333,color:white
 ```
 
+## mTLS Handshake & Trust Chain
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Internal Client
+    participant APIM as API Management<br/>(Internal Mode)
+    participant F as Function App<br/>(Go Custom Handler)
+    participant KV as Key Vault<br/>(Entra ID RBAC)
+
+    Note over C,F: All traffic stays within the VNet — no public internet exposure
+
+    C->>APIM: TLS handshake + client certificate
+    activate APIM
+
+    APIM->>APIM: validate-client-certificate policy<br/>• Verify cert chain against uploaded CA<br/>• Check CN = "checkout-client"<br/>• Reject expired/revoked certs
+
+    alt Certificate invalid
+        APIM-->>C: 403 Forbidden (certificate rejected)
+    end
+
+    APIM->>F: Forward request + X-Forwarded-Client-Cert header
+    deactivate APIM
+    activate F
+
+    F->>KV: Fetch CA certificate (Managed Identity + RBAC)
+    KV-->>F: CA cert PEM
+
+    F->>F: Application-level validation<br/>• Verify client cert signature against CA<br/>• Check CN matches expected value<br/>• Defense-in-depth (belt + braces)
+
+    alt Certificate invalid at app level
+        F-->>C: 401 Unauthorized
+    end
+
+    F->>F: Process request<br/>• Parse JSON body<br/>• Generate X-Request-ID
+
+    F-->>C: 200 OK {"message": "...", "request_id": "..."}
+    deactivate F
+
+    Note over C,KV: Two independent validation layers:<br/>1. APIM policy (gateway)<br/>2. Function App code (application)
+```
+
 ## VNet-Internal Smoke Testing with mTLS
 
 The API runs on a private network and requires mTLS, making it unreachable from GitHub Actions runners on the public internet. We solve this with a **split-plane testing** pattern:
