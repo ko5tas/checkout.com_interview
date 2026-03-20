@@ -5,8 +5,8 @@
 # deployment failure: stale state causing "already exists" or "404" errors.
 #
 # Usage:
-#   STATE_RG=rg-tfstate-westeurope STATE_SA=sttfstate964b29c3 \
-#   STATE_KEY=checkout-dev.tfstate TARGET_RG=rg-checkout-dev \
+#   STATE_RG=rg-tfstate-westeurope STATE_SA=sttfstate202603 \
+#   STATE_KEY=cko-dev.tfstate TARGET_RG=rg-cko-dev \
 #   ./scripts/verify-state.sh
 #
 set -euo pipefail
@@ -159,7 +159,7 @@ fi
 # re-creation with the same name. Purge any matching vaults preemptively.
 echo ""
 echo "--- Checking for soft-deleted Key Vaults ---"
-NAME_PREFIX="${TARGET_RG#rg-}"  # e.g., rg-checkout-dev → checkout-dev
+NAME_PREFIX="${TARGET_RG#rg-}"  # e.g., rg-cko-dev → cko-dev
 DELETED_KVS=$(az keyvault list-deleted \
   --query "[?contains(name,'${NAME_PREFIX}')].name" \
   -o tsv 2>/dev/null || true)

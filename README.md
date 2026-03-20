@@ -50,8 +50,10 @@ graph TB
     FUNC -->|"Telemetry"| AI
     AI --> LAW
 
-    NSG_F["NSG: Deny Internet<br/>Allow VNet 443"] -.-> FUNC
-    NSG_PE["NSG: Deny Internet<br/>Allow VNet 443"] -.-> PE_KV
+    NSG_F["NSG: Function<br/>IN: APIM+Smoke→443<br/>OUT: PE→443, Storage, KV, Monitor"] -.-> FUNC
+    NSG_PE["NSG: PE<br/>IN: Function+Smoke→443<br/>Deny all other"] -.-> PE_KV
+    NSG_APIM["NSG: APIM<br/>IN: Internet→443, Mgmt→3443, LB→6390<br/>OUT: Function→443"] -.-> APIM
+    NSG_SM["NSG: Smoke Test<br/>OUT: Function+PE→443, KV, Storage<br/>IN: Deny Internet"] -.-> SMOKE
 
     style APIM fill:#0078d4,color:white
     style FUNC fill:#68217a,color:white
@@ -409,6 +411,26 @@ gh secret delete AZURE_TENANT_ID
 
   Benefits: a failed APIM apply doesn't corrupt networking state; app redeployment doesn't touch APIM; `terraform destroy` blast radius limited to one domain. Cross-state references use `terraform_remote_state` data sources.
 - **APIM race condition mitigation** — Azure APIM Developer tier takes ~28 minutes to provision. When it completes, Azure's internal async processes (diagnostics, DNS, internal certs) continue running. We use `time_sleep` (60s) after APIM creation with explicit `depends_on` on all child resources. This is a known azurerm provider issue ([#24135](https://github.com/hashicorp/terraform-provider-azurerm/issues/24135)).
+- **Zero Trust NSG microsegmentation** — Every NSG rule uses explicit subnet CIDRs and specific ports instead of the `VirtualNetwork` service tag catch-all. No implicit lateral movement is allowed between subnets. Traffic flow matrix:
+
+  | Source | Destination | Port | Purpose |
+  |--------|------------|------|---------|
+  | APIM subnet | Function subnet | 443 | API gateway → backend |
+  | Smoke test subnet | Function subnet | 443 | mTLS integration test |
+  | Smoke test subnet | PE subnet | 443 | Key Vault cert fetch |
+  | Function subnet | PE subnet | 443 | KV + Storage private endpoints |
+  | Function subnet | Storage (svc endpoint) | 443 | AzureWebJobsStorage |
+  | Function subnet | KeyVault (svc endpoint) | 443 | Key Vault secrets |
+  | Function subnet | AzureMonitor (svc tag) | 443 | Telemetry |
+  | Internet | APIM subnet | 443 | Client → gateway |
+  | ApiManagement | APIM subnet | 3443 | Azure control plane |
+  | AzureLoadBalancer | APIM subnet | 6390 | Health probes |
+
+  All subnets have explicit deny-all inbound rules at priority 4096.
+
+- **Future: Azure Virtual Network Manager (AVNM)** — For multi-team or multi-subscription deployments, AVNM provides hub-and-spoke network topology management with centralised security admin rules. Benefits over per-VNet NSGs: (1) admin rules that cannot be overridden by subnet NSGs, (2) automatic mesh connectivity between spokes, (3) centrally managed security policies. This is documented but not implemented as the assessment uses a single VNet.
+- **Future: Comprehensive Azure resource tagging strategy** — Production deployments should enforce a tagging policy via Azure Policy (deny resources missing required tags). Recommended tags: `environment` (dev/staging/prod), `cost-centre`, `owner`, `managed-by` (terraform), `project`, `created-date`, `data-classification` (public/internal/confidential). Tags enable cost allocation, automated cleanup (e.g., destroy resources tagged `environment=dev` after hours), compliance reporting, and blast radius identification during incidents.
+- **Future: Self-hosted GitHub Actions runners on Azure VMs** — Replace GitHub-hosted runners with self-hosted runners deployed as Azure VMs (or VMSS for auto-scaling) inside the VNet. Benefits: (1) runners use Azure Managed Identity for OIDC-free authentication — no stored credentials or federated identity setup needed, (2) runners have direct VNet access to private endpoints, eliminating the need for the smoke test split-plane workaround, (3) egress traffic stays on the Azure backbone, (4) runners can be placed in a dedicated `snet-runners` subnet with microsegmented NSG rules, (5) full control over runner OS, toolchain, and security patching. The Managed Identity assigned to the runner VM would have scoped RBAC roles (Contributor on the target resource group, Storage Blob Data Contributor on the state backend). This eliminates the entire OIDC federation complexity documented in the Setup section.
 
 ## Estimated Azure Costs
 
@@ -450,7 +472,7 @@ gh secret delete AZURE_TENANT_ID
    - Running `terraform destroy` on the existing UK South infrastructure
    - Fixing the azurerm provider to set `prevent_deletion_if_contains_resources = false` in the `resource_group` feature block — Azure auto-creates Smart Detection alert rules and action groups inside resource groups containing Application Insights, and these orphaned resources block Terraform's resource group deletion
    - **Manual step:** Deleting the `NetworkWatcher_uksouth` resource from the `NetworkWatcherRG` resource group via the Azure Portal. This is an Azure-auto-created free diagnostic resource that is not managed by Terraform and was no longer needed after the region move. The `NetworkWatcherRG` resource group itself was also deleted.
-   - The Terraform state backend (`rg-tfstate-westeurope` / `sttfstate964b29c3`) was intentionally kept in UK South — it stores state files for all environments and incurs negligible cost (~£0.01/month for blob storage).
+   - The Terraform state backend (`rg-tfstate-westeurope` / `sttfstate202603`) was intentionally kept in UK South — it stores state files for all environments and incurs negligible cost (~£0.01/month for blob storage).
 
 5. **Nightly schedule destroys state backend too.** The `schedule.yml` nightly destroy not only runs `terraform destroy` on application resources but also cleans up the dev state blob and, if no other environments exist, deletes the state storage account itself — eliminating all residual cost.
 

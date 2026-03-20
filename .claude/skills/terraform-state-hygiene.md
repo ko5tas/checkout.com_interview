@@ -27,7 +27,7 @@ set -euo pipefail
 
 # Configuration
 STATE_RG="${STATE_RG:-rg-tfstate-westeurope}"
-STATE_SA="${STATE_SA:-sttfstate964b29c3}"
+STATE_SA="${STATE_SA:-sttfstate202603}"
 STATE_CONTAINER="${STATE_CONTAINER:-tfstate}"
 STATE_KEY="${STATE_KEY:-checkout-dev.tfstate}"
 TARGET_RG="${TARGET_RG:-rg-checkout-dev}"

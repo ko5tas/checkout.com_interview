@@ -6,7 +6,7 @@ variable "subscription_id" {
 variable "project" {
   description = "Project name used in resource naming"
   type        = string
-  default     = "checkout"
+  default     = "cko"
 }
 
 variable "environment" {

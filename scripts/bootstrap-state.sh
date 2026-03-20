@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-LOCATION="${LOCATION:-uksouth}"
+LOCATION="${LOCATION:-westeurope}"
 RG_NAME="${RG_NAME:-rg-tfstate-${LOCATION}}"
 CONTAINER_NAME="${CONTAINER_NAME:-tfstate}"
 
@@ -47,8 +47,8 @@ if [[ -n "${EXISTING_SA}" ]]; then
   SA_NAME="${EXISTING_SA}"
   echo "Storage account '${SA_NAME}' already exists — reusing."
 else
-  # Generate a new unique name only when no existing account is found
-  SA_NAME="${SA_NAME:-sttfstate$(openssl rand -hex 4)}"
+  # Use a predictable, date-based suffix to avoid hardcoding issues
+  SA_NAME="${SA_NAME:-sttfstate$(date +%Y%m)}"
   echo ""
   echo "No existing state storage account found. Will create:"
   echo "  Storage Account:   ${SA_NAME}"
@@ -115,9 +115,9 @@ echo "    backend \"azurerm\" {"
 echo "      resource_group_name  = \"${RG_NAME}\""
 echo "      storage_account_name = \"${SA_NAME}\""
 echo "      container_name       = \"${CONTAINER_NAME}\""
-echo "      key                  = \"checkout-dev.tfstate\""
+echo "      key                  = \"cko-dev.tfstate\""
 echo "      use_oidc             = true"
 echo "    }"
 echo "  }"
 echo ""
-echo "Then run: terraform init -backend-config=\"key=checkout-<ENV>.tfstate\""
+echo "Then run: terraform init -backend-config=\"key=cko-<ENV>.tfstate\""

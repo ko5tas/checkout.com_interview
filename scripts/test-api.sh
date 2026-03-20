@@ -6,7 +6,7 @@
 #   ./scripts/test-api.sh <APIM_GATEWAY_URL> <CLIENT_CERT_PATH> <CLIENT_KEY_PATH> <CA_CERT_PATH>
 #
 # Example:
-#   ./scripts/test-api.sh https://apim-checkout-dev.azure-api.net \
+#   ./scripts/test-api.sh https://apim-cko-dev.azure-api.net \
 #     ./certs/client.pem ./certs/client-key.pem ./certs/ca.pem
 
 set -euo pipefail

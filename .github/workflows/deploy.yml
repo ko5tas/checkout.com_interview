@@ -132,15 +132,15 @@ jobs:
       - name: Verify State Alignment
         env:
           STATE_RG: rg-tfstate-westeurope
-          STATE_SA: sttfstate964b29c3
+          STATE_SA: sttfstate202603
           STATE_KEY: checkout-${{ inputs.environment }}.tfstate
-          TARGET_RG: rg-checkout-${{ inputs.environment }}
+          TARGET_RG: rg-cko-${{ inputs.environment }}
         run: bash scripts/verify-state.sh
 
       - name: Terraform Init
         env:
           ENVIRONMENT: ${{ inputs.environment }}
-        run: terraform init -backend-config="key=checkout-${ENVIRONMENT}.tfstate"
+        run: terraform init -backend-config="key=cko-${ENVIRONMENT}.tfstate"
 
       - name: Terraform Plan
         id: plan
@@ -200,6 +200,8 @@ jobs:
           name: plan-output
 
       - name: Analyse plan
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python3 scripts/analyze-plan.py plan-output.txt >> "$GITHUB_STEP_SUMMARY"
 
   # --- Approval Gate (uses GitHub Environments) ---
@@ -244,8 +246,8 @@ jobs:
       - name: Pre-Apply State Guard (read-only)
         if: inputs.action == 'apply'
         env:
-          TARGET_RG: rg-checkout-${{ inputs.environment }}
-          STATE_SA: sttfstate964b29c3
+          TARGET_RG: rg-cko-${{ inputs.environment }}
+          STATE_SA: sttfstate202603
           STATE_CONTAINER: tfstate
           STATE_KEY: checkout-${{ inputs.environment }}.tfstate
         run: |
@@ -266,7 +268,7 @@ jobs:
       - name: Terraform Init
         env:
           ENVIRONMENT: ${{ inputs.environment }}
-        run: terraform init -backend-config="key=checkout-${ENVIRONMENT}.tfstate"
+        run: terraform init -backend-config="key=cko-${ENVIRONMENT}.tfstate"
 
       - name: Download plan
         uses: actions/download-artifact@v8

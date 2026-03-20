@@ -19,12 +19,12 @@ provider "random" {}
 provider "time" {}
 
 # Remote state backend.
-# The key is passed via -backend-config="key=checkout-${ENV}.tfstate" at init time,
+# The key is passed via -backend-config="key=cko-${ENV}.tfstate" at init time,
 # giving each environment its own state file in the same container.
 terraform {
   backend "azurerm" {
     resource_group_name  = "rg-tfstate-westeurope"
-    storage_account_name = "sttfstate964b29c3"
+    storage_account_name = "sttfstate202603"
     container_name       = "tfstate"
     use_oidc             = true
   }
