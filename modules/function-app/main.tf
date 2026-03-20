@@ -152,7 +152,6 @@ resource "azurerm_linux_function_app" "main" {
     "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.function.name};AccountKey=${azurerm_storage_account.function.primary_access_key};EndpointSuffix=core.windows.net"
     "WEBSITE_CONTENTSHARE"                     = "func-${var.name_prefix}-content"
     "FUNCTIONS_WORKER_RUNTIME"                 = "custom"
-    "WEBSITE_RUN_FROM_PACKAGE"                  = "1"
     "WEBSITE_RUN_FROM_PACKAGE"                 = "1"
   }
 }

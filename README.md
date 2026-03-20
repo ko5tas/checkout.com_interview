@@ -147,6 +147,24 @@ Two layers of certificate validation protect against compromised internal servic
 - Go code validates the `X-ARR-ClientCert` header: decodes cert, verifies CA chain, checks CN
 - Strict payload validation: `DisallowUnknownFields()`, max size, type checking
 
+### Function App Deployment Strategy
+
+**Approach:** Terraform manages infrastructure (Function App resource, App Service Plan, storage, networking). Application code is deployed separately via `az functionapp deployment source config-zip` in the CI/CD pipeline.
+
+**Why not deploy app code via Terraform?**
+
+| Consideration | Terraform-only | Hybrid (current) |
+|--------------|----------------|-------------------|
+| Change cadence | Infra + app coupled — app change triggers full plan/apply | App deploys independently in seconds |
+| Blast radius | Bad app code triggers Terraform state changes | App deploy failure doesn't touch infra state |
+| Speed | Full plan+apply cycle (~minutes) | Zip deploy (~seconds) |
+| Declarative purity | ✅ Everything in state | ❌ App deploy is imperative |
+| Complexity | Lower — single tool | Higher — two deployment mechanisms |
+
+**Decision:** The hybrid approach is intentional. In production with frequent app releases, decoupling app deployment from infrastructure changes reduces blast radius and speeds up the inner dev loop. The trade-off (imperative `az` CLI step) is acceptable because the deploy step is idempotent and stateless.
+
+**Custom handler note:** Azure Functions with Go custom handlers require `linuxFxVersion=CUSTOM|` to be set explicitly before `config-zip` deployment on Consumption plans, as Azure cannot auto-detect the runtime.
+
 ### Technology Choices
 
 | Choice | Rationale |
