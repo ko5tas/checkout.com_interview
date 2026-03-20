@@ -17,7 +17,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"log"
@@ -26,15 +25,15 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azcertificates"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets"
 )
 
 const (
 	listenAddr       = ":8080"
 	requestTimeout   = 30 * time.Second
-	certName         = "api-client-cert"
-	maxResponseBytes = 1 << 20 // 1 MB
+	certSecretName   = "client-certificate"  // matches Terraform azurerm_key_vault_secret name
+	keySecretName    = "client-private-key"   // matches Terraform azurerm_key_vault_secret name
+	maxResponseBytes = 1 << 20               // 1 MB
 )
 
 // TestResult captures the smoke test outcome.
@@ -212,69 +211,38 @@ func handleSmokeTest(w http.ResponseWriter, r *http.Request) {
 }
 
 // fetchClientCert retrieves the client certificate and private key from Key Vault
-// using Managed Identity, and returns a TLS config for mTLS connections.
+// secrets using Managed Identity, and returns a TLS config for mTLS connections.
+//
+// The certs are stored as separate Key Vault secrets (not KV certificates) by
+// Terraform's azurerm_key_vault_secret resources: "client-certificate" contains
+// the PEM-encoded certificate, "client-private-key" contains the PEM-encoded key.
 func fetchClientCert(ctx context.Context, vaultURI string) (*tls.Config, error) {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create credential: %w", err)
 	}
 
-	// Fetch the certificate (public part)
-	certClient, err := azcertificates.NewClient(vaultURI, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cert client: %w", err)
-	}
-
-	certResp, err := certClient.GetCertificate(ctx, certName, "", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get certificate: %w", err)
-	}
-
-	// Fetch the private key (stored as a secret with same name)
 	secretClient, err := azsecrets.NewClient(vaultURI, cred, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create secret client: %w", err)
 	}
 
-	secretResp, err := secretClient.GetSecret(ctx, certName, "", nil)
+	// Fetch client certificate PEM
+	certResp, err := secretClient.GetSecret(ctx, certSecretName, "", nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get private key secret: %w", err)
+		return nil, fmt.Errorf("failed to get client certificate secret: %w", err)
 	}
 
-	// Parse PEM-encoded cert and key from the secret value
-	// Azure Key Vault stores the full PFX/PEM bundle in the secret
-	pemData := []byte(*secretResp.Value)
-
-	var certPEMBlocks []byte
-	var keyPEMBlock []byte
-
-	for {
-		var block *pem.Block
-		block, pemData = pem.Decode(pemData)
-		if block == nil {
-			break
-		}
-		switch block.Type {
-		case "CERTIFICATE":
-			certPEMBlocks = append(certPEMBlocks, pem.EncodeToMemory(block)...)
-		case "PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY":
-			keyPEMBlock = pem.EncodeToMemory(block)
-		}
+	// Fetch client private key PEM
+	keyResp, err := secretClient.GetSecret(ctx, keySecretName, "", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client private key secret: %w", err)
 	}
 
-	if len(certPEMBlocks) == 0 {
-		// Certificate might be DER-encoded in the cert response
-		certPEMBlocks = pem.EncodeToMemory(&pem.Block{
-			Type:  "CERTIFICATE",
-			Bytes: certResp.CER,
-		})
-	}
+	certPEM := []byte(*certResp.Value)
+	keyPEM := []byte(*keyResp.Value)
 
-	if keyPEMBlock == nil {
-		return nil, fmt.Errorf("no private key found in Key Vault secret")
-	}
-
-	tlsCert, err := tls.X509KeyPair(certPEMBlocks, keyPEMBlock)
+	tlsCert, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create TLS key pair: %w", err)
 	}
