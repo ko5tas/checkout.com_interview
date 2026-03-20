@@ -609,12 +609,35 @@ clean state → apply (orphaned RG) → delete RG → apply (finally works)
 
 ## AI Usage & Critique
 
-This implementation was built with Claude (Anthropic) as an AI coding assistant. Below is a summary of the collaboration and critique.
+This implementation was built with Claude (Anthropic) as an AI coding assistant across multiple intensive sessions. The collaboration followed a deliberate pattern: I set architectural direction and constraints, the AI generated implementation, and I challenged assumptions at every layer. Prompts are grouped by theme to show the breadth of the collaboration.
 
 ### Prompts Used
 
-1. "Given the technical assessment PDF, let's start addressing each issue and build a SKILL.md library"
-2. Iterative design discussions on: module repo strategy, remote state bootstrap, mTLS CN validation, payload validation, quality tooling (Trivy vs tfsec vs Checkov), testing frameworks (terraform test vs Terratest), and API demo approaches
+**Architecture & Design**
+- *"Given the technical assessment PDF, let's start addressing each issue and build a SKILL.md library"* — Kickoff prompt that set the pattern of documenting decisions as reusable skills alongside implementation. Every significant discovery (state hygiene anti-patterns, azurerm provider bugs, cost optimisation patterns) was captured in `.claude/skills/` as a living knowledge base.
+- *"I see a tendency you finding 'known azurerm provider' issues. Let's bake a mechanism into your memory and a SKILL"* — Created `.claude/skills/azurerm-provider-known-issues.md` as a living registry of provider bugs and workarounds, so lessons aren't lost between sessions.
+- *"I want us to use centralised Entra ID authN/AuthZ"* — Drove the shift from Key Vault access policies to `rbac_authorization_enabled = true` with `azurerm_role_assignment` for all service identities.
+- *"Can you explain why you were deploying the function app via az CLI and not Terraform?"* — Challenged the hybrid deployment approach. Led to an explicit design decision documenting the trade-off (speed + blast radius vs declarative purity).
+- *"On step 2 do we split our state files into smaller chunks?"* — Evaluated state-per-domain splitting; chose to document as a future improvement rather than over-engineer for a single-environment assessment.
+
+**Security & Zero Trust**
+- *"We need to be explicit on any egress/ingress communication, even between subnets within the same VNet"* — Prompted Zero Trust NSG microsegmentation with explicit subnet CIDRs and ports, replacing broad `VirtualNetwork` catch-all rules.
+- *"Why did you choose subscription_id as a sensitive value?"* — Pushed back on the AI marking `subscription_id` as sensitive. Subscription IDs are not secrets — marking them sensitive hides useful plan output. Reverted.
+- *"Try and avoid terraform imports! That is a bad pattern. Instead get your priority solution selection from what you are hinted"* — Rejected `terraform import` in CI as a hack for the APIM race condition. Led to the `time_sleep` + `depends_on` pattern instead.
+
+**CI/CD & Quality**
+- *"I only see terraform-related workflows. Why did we not follow through with the Go side?"* — Challenged the AI to treat app code with equal CI/CD rigour, resulting in `go.yml` with `go vet`, `golangci-lint`, `go test -race`, and build verification.
+- *"What happens if the release fails? Do we have graceful rollback?"* — Added rollback considerations and SAST/DAST analysis for Go.
+- *"Will you be able to monitor for that long? In the past you've gone quiet"* — Exposed `gh run watch` unreliability for long deploys (~30 min APIM provisioning). Switched to polling with `gh run view`. Stored as a permanent memory item.
+
+**Cost & Operations**
+- *"I'm afraid you might blow up my $200 budget"* — Triggered budget-guard workflow, nightly destroy schedule, Infracost documentation, and a detailed cost control decision log.
+- *"Add notes about improvements. I would pay close attention to avoiding these money wasteful cycles"* — Drove FinOps documentation including region migration costs, failed deploy retry costs, and APIM Developer tier impact.
+- *"Those gh delete commands you ran from my machine, would it make sense to have them on a cleanup/destroy pipeline?"* — Led to automated teardown workflows instead of manual `az` commands.
+
+**Debugging & Troubleshooting**
+- *"Investigate deeply, thoroughly and ultrathink!"* — Deep dive into APIM "already exists" race condition on clean deploys. Root cause: Azure's internal async processes racing with Terraform after 28-min provisioning.
+- *"It failed again and you were not even monitoring it"* — Drove persistent deploy monitoring discipline and the switch from `gh run watch` to polling loops.
 
 ### Critique of AI Output
 
@@ -629,8 +652,13 @@ This implementation was built with Claude (Anthropic) as an AI coding assistant.
 - Initial Python suggestion changed to Go after user preference — this was a better choice for the systems engineering context
 - `metric` block in diagnostic settings was deprecated in azurerm v4.x — caught by `terraform validate` and corrected to `enabled_metric`
 - `azurerm_key_vault_certificate` was initially planned but `azurerm_key_vault_secret` is correct for PEM content from the `tls` provider
+- `az functionapp deployment source config-zip` fails with OIDC federated credentials — OIDC tokens authenticate to ARM (management plane) but cannot access Kudu/SCM (data plane). Fixed by switching to `Azure/functions-action@v1`
+- `WEBSITE_RUN_FROM_PACKAGE=1` makes the Function App filesystem read-only, causing `config-zip` to return `Bad Request`. Removed after root-cause analysis
+- Smoke test code referenced a Key Vault certificate named `api-client-cert` but Terraform stores certs as secrets named `client-certificate` and `client-private-key` — naming mismatch caught by pipeline smoke test
 
 **Patterns to watch for:**
 - AI may default to the simplest/cheapest tier without considering functional requirements (e.g., Consumption APIM lacks VNet injection)
 - AI-generated Terraform may use deprecated attributes — always run `terraform validate` and review warnings
 - Module dependency graphs need manual review for circular references
+- AI will retry failed operations without root-cause analysis unless explicitly told to investigate first
+- AI-generated code may reference resource names that don't match what Terraform actually creates — always verify naming alignment end-to-end
