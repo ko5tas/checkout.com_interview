@@ -12,17 +12,18 @@ description: Quality toolchain for Terraform + Go projects — linters, security
 | `terraform fmt` | `terraform fmt -check -recursive` | Formatting + catches syntax errors early |
 | `terraform validate` | `terraform validate` | Structural validation |
 | `tflint` | `tflint --recursive` | Provider-specific linting (deprecated attrs, naming) |
-| **Trivy** | `trivy config .` | Security scanning — successor to tfsec (deprecated 2024) |
+| ~~Trivy~~ | ~~`trivy config .`~~ | **REMOVED 2026-03-20** — supply chain compromise ([details](https://www.stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release)) |
 | **Checkov** | `checkov -d .` | Deep IaC analysis with graph-based cross-resource checks |
 
-### Why both Trivy and Checkov?
+### ⚠️ Trivy Supply Chain Compromise (2026-03-20)
 
-- **Trivy**: Broad (also scans containers, deps), inherits all tfsec checks
-- **Checkov**: Graph-based policies check cross-resource relationships (e.g., "is this NSG associated with the correct subnet?")
+Trivy's GitHub Action (`aquasecurity/trivy-action`) was compromised **twice**. Attackers injected malicious code into release tags. The `setup-trivy` action was also affected. **Do not use any `aquasecurity/*` GitHub Actions until the project re-establishes trust.**
+
+Checkov remains as our sole IaC scanner — it provides equivalent coverage for Terraform via graph-based policies.
 
 ### tfsec is deprecated
 
-tfsec was absorbed into Trivy in 2024. Replace `tfsec .` with `trivy config .` — all check IDs are preserved.
+tfsec was absorbed into Trivy in 2024. However, since Trivy itself is now compromised, use **Checkov** as the primary IaC scanner.
 
 ## Go Tools
 

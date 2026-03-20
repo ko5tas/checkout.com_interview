@@ -8,7 +8,7 @@ on:
       - "modules/**"
       - "environments/**"
       - ".tflint.hcl"
-      - ".trivyignore"
+      # - ".trivyignore"  # Trivy removed — supply chain compromise
       - ".checkov.yml"
       - ".github/workflows/terraform.yml"
   pull_request:
@@ -18,7 +18,7 @@ on:
       - "modules/**"
       - "environments/**"
       - ".tflint.hcl"
-      - ".trivyignore"
+      # - ".trivyignore"  # Trivy removed — supply chain compromise
       - ".checkov.yml"
       - ".github/workflows/terraform.yml"
 
@@ -59,13 +59,10 @@ jobs:
           tflint --init
           tflint --recursive
 
-      - name: Trivy IaC Scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: config
-          scan-ref: .
-          exit-code: 1
-          severity: HIGH,CRITICAL
+      # Trivy IaC Scan — REMOVED 2026-03-20
+      # aquasecurity/trivy-action compromised (supply chain attack):
+      # https://www.stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release
+      # Checkov provides equivalent IaC scanning coverage.
 
       - name: Checkov
         uses: bridgecrewio/checkov-action@v12

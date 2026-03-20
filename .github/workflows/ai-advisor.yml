@@ -50,7 +50,8 @@ jobs:
           echo "| Dependency | Latest |" >> latest.md
           echo "|-----------|--------|" >> latest.md
 
-          for REPO in hashicorp/terraform hashicorp/terraform-provider-azurerm golangci/golangci-lint aquasecurity/trivy bridgecrewio/checkov; do
+          # Trivy removed — supply chain compromise (2026-03-20)
+          for REPO in hashicorp/terraform hashicorp/terraform-provider-azurerm golangci/golangci-lint bridgecrewio/checkov; do
             LATEST=$(gh api "repos/$REPO/releases/latest" --jq '.tag_name' 2>/dev/null || echo "unknown")
             echo "| $REPO | $LATEST |" >> latest.md
           done
