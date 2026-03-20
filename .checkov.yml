@@ -58,3 +58,7 @@ skip-check:
   # it's lightweight CI tooling, not a data store. Adding PEs would
   # increase cost and complexity for zero security benefit.
   - CKV2_AZURE_33 # Ensure storage account is configured with private endpoint
+
+  # Smoke test App Service Plan uses B1 (Basic) — cheapest SKU with VNet
+  # integration. This is CI tooling, not a production workload.
+  - CKV_AZURE_211 # Ensure App Service plan suitable for production use
