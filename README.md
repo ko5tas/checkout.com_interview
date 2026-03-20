@@ -261,6 +261,34 @@ golangci-lint run
 go vet ./...
 ```
 
+### CI/CD Pipelines
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `terraform.yml` | PR & push to main | `fmt -check`, `validate`, TFLint, Trivy, Checkov, `terraform plan` |
+| `go.yml` | PR & push to main | `go vet`, `golangci-lint`, `go test -race`, builds both function apps |
+| `deploy.yml` | Manual (`workflow_dispatch`) | Full deploy: plan → AI analysis → approval → apply → zip deploy → smoke tests |
+| `release.yml` | Semver tags (`[0-9]+.*`) | Go build, create GitHub Release with artifacts |
+| `budget-guard.yml` | Daily 06:00 UTC | Checks remaining Azure credits, creates issue if below threshold |
+| `schedule.yml` | Nightly 02:00 UTC | `terraform destroy` to save costs during off-hours |
+
+**Function App deployment** uses `Azure/functions-action@v1` (not `az functionapp deployment source config-zip`) because OIDC federated tokens authenticate to the ARM management plane only — they cannot access the Kudu/SCM data plane endpoint that `config-zip` requires. The official GitHub Action handles this by fetching publish credentials internally via ARM.
+
+**Smoke test** runs as the final pipeline stage: the CI runner invokes the smoke test Azure Function (via master key), which in turn calls the main Function App over HTTPS with an mTLS client certificate fetched from Key Vault using Managed Identity. This proves the internal API works end-to-end from inside Azure.
+
+### Environment Deployment
+
+```bash
+# Dev (default)
+gh workflow run deploy.yml -f environment=dev -f action=apply
+
+# Prod
+gh workflow run deploy.yml -f environment=prod -f action=apply
+
+# Destroy
+gh workflow run deploy.yml -f environment=dev -f action=destroy
+```
+
 ## Teardown
 
 ```bash
