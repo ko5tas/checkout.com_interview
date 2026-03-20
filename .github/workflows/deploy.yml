@@ -338,41 +338,16 @@ jobs:
           name: smoke-test-function
 
       - name: Deploy main Function App
-        env:
-          FUNC_NAME: ${{ needs.terraform-apply.outputs.function-app-name }}
-          RG_NAME: ${{ needs.terraform-apply.outputs.resource-group }}
-        run: |
-          # Set linuxFxVersion for custom Go handler before zip deploy
-          az functionapp config set \
-            --name "$FUNC_NAME" \
-            --resource-group "$RG_NAME" \
-            --linux-fx-version "CUSTOM|" \
-            --output none 2>/dev/null || true
-          az functionapp deployment source config-zip \
-            --name "$FUNC_NAME" \
-            --resource-group "$RG_NAME" \
-            --src function-app.zip \
-            --build-remote false \
-            --timeout 300
-          echo "Main function deployed!"
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ needs.terraform-apply.outputs.function-app-name }}
+          package: function-app.zip
 
       - name: Deploy smoke test Function App
-        env:
-          FUNC_NAME: ${{ needs.terraform-apply.outputs.smoke-test-name }}
-          RG_NAME: ${{ needs.terraform-apply.outputs.smoke-test-rg }}
-        run: |
-          az functionapp config set \
-            --name "$FUNC_NAME" \
-            --resource-group "$RG_NAME" \
-            --linux-fx-version "CUSTOM|" \
-            --output none 2>/dev/null || true
-          az functionapp deployment source config-zip \
-            --name "$FUNC_NAME" \
-            --resource-group "$RG_NAME" \
-            --src smoke-test.zip \
-            --build-remote false \
-            --timeout 300
-          echo "Smoke test function deployed!"
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ needs.terraform-apply.outputs.smoke-test-name }}
+          package: smoke-test.zip
 
   # --- Smoke Tests (apply only) ---
   # Two phases: control-plane checks (ARM), then data-plane mTLS test (VNet-internal)
