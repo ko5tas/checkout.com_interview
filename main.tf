@@ -60,7 +60,8 @@ module "certificates" {
   client_common_name = var.allowed_client_cn
   key_vault_id       = module.key_vault.key_vault_id
 
-  depends_on = [module.key_vault]
+  # Destroy order: secrets deleted BEFORE RBAC role is removed (prevents 403 on destroy)
+  depends_on = [module.key_vault, azurerm_role_assignment.kv_cicd_admin]
 }
 
 # --- Function App ---
@@ -93,6 +94,10 @@ module "api_management" {
   ca_cert_pem           = module.certificates.ca_cert_pem
   allowed_client_cn     = var.allowed_client_cn
   tags                  = local.common_tags
+
+  # Destroy order: APIM child resources (API, operations, certs) destroyed BEFORE
+  # NSGs/subnets, ensuring port 3443 management endpoint remains reachable during teardown.
+  depends_on = [module.networking]
 }
 
 # --- Smoke Test Function ---
@@ -111,6 +116,9 @@ module "smoke_test" {
   app_insights_instrumentation_key = module.observability.app_insights_instrumentation_key
   app_insights_connection_string   = module.observability.app_insights_connection_string
   tags                             = local.common_tags
+
+  # Destroy order: smoke test resources destroyed before networking (needs VNet for KV PE access)
+  depends_on = [module.networking]
 }
 
 # --- Alerts (in root to avoid circular deps between observability and function-app) ---

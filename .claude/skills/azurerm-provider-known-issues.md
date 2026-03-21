@@ -93,9 +93,38 @@ The azurerm provider frequently renames attributes between major versions. Commo
 - **GitHub issue:** https://github.com/hashicorp/terraform-provider-azurerm/issues/24135
 - **Provider requirement:** `hashicorp/time ~> 0.12`
 
-### Category 4: Soft-Delete & Purge Protection
+### Category 4: Destroy Ordering Race Conditions
 
-#### 4.1 Key Vault Soft Delete
+#### 4.1 APIM Destroy Fails with 422 — Management Endpoint Unreachable
+- **Trigger:** `terraform destroy` on APIM in Internal VNet mode
+- **Error:** `unexpected status 422: Failed to connect to management endpoint on port 3443`
+- **Root cause:** Terraform destroys NSGs/subnets in parallel with APIM child resources (API, operations). APIM needs port 3443 open to its management endpoint during delete operations.
+- **Fix:** Add explicit `depends_on = [module.networking]` on the APIM module call in root. This ensures destroy order: APIM resources → networking resources.
+  ```hcl
+  module "api_management" {
+    source = "./modules/api-management"
+    # ... vars ...
+    depends_on = [module.networking]  # NSGs stay alive during APIM destroy
+  }
+  ```
+
+#### 4.2 Key Vault Secret Destroy Fails with 403 — RBAC Deleted First
+- **Trigger:** `terraform destroy` on infrastructure with RBAC-controlled Key Vault
+- **Error:** `403 Forbidden: Caller is not authorized to perform action`
+- **Root cause:** RBAC role assignments are destroyed before Terraform finishes deleting KV secrets. Without the role, the CI/CD SP can't read/delete secrets.
+- **Fix:** Modules that create KV secrets must `depends_on` the RBAC role assignment:
+  ```hcl
+  module "certificates" {
+    source = "./modules/certificates"
+    # ... vars ...
+    depends_on = [module.key_vault, azurerm_role_assignment.kv_cicd_admin]
+  }
+  ```
+- **Key insight:** `depends_on` controls BOTH create and destroy order. If A depends_on B: create B→A, destroy A→B.
+
+### Category 5: Soft-Delete & Purge Protection
+
+#### 5.1 Key Vault Soft Delete
 - **Trigger:** Destroying a Key Vault, then recreating with the same name
 - **Error:** `A vault with the same name already exists in deleted state`
 - **Fix:**
@@ -110,14 +139,14 @@ The azurerm provider frequently renames attributes between major versions. Commo
   }
   ```
 
-#### 4.2 Storage Account Soft Delete
+#### 5.2 Storage Account Soft Delete
 - **Trigger:** Storage accounts with blob versioning or soft-delete enabled
 - **Problem:** Deleted blobs/containers retain data for retention period, occupying the name
 - **Fix:** Set appropriate retention days and wait, or use unique naming with `random_string`
 
-### Category 5: Quota & Subscription Issues
+### Category 6: Quota & Subscription Issues
 
-#### 5.1 Dynamic VM Quota on Free Trial
+#### 6.1 Dynamic VM Quota on Free Trial
 - **Trigger:** Creating Consumption plan (Y1) Function App on Free Trial subscription
 - **Error:** `Dynamic VMs quota: 0` or `401 Unauthorized`
 - **Root cause:** Free Trial doesn't allocate Dynamic VM quota
