@@ -250,9 +250,13 @@ jobs:
           fi
 
       # --- Post to GitHub Discussions (Announcements category) ---
+      # Note: GITHUB_TOKEN lacks Discussion write scope. Requires a PAT with
+      # 'discussion:write' permission stored as a repo secret (e.g. DISCUSSIONS_PAT).
+      # Until configured, this step will gracefully skip.
       - name: Post report as Discussion
+        continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.DISCUSSIONS_PAT != '' && secrets.DISCUSSIONS_PAT || secrets.GITHUB_TOKEN }}
         run: |
           REPO_ID=$(gh api graphql -f query='{ repository(owner:"ko5tas", name:"checkout.com_interview") { id } }' --jq '.data.repository.id')
           CAT_ID="DIC_kwDORppi0c4C45zE"  # Announcements
