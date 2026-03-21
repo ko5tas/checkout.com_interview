@@ -268,7 +268,7 @@ jobs:
           GH_TOKEN: ${{ secrets.DISCUSSIONS_PAT != '' && secrets.DISCUSSIONS_PAT || secrets.GITHUB_TOKEN }}
         run: |
           REPO_ID=$(gh api graphql -f query='{ repository(owner:"ko5tas", name:"checkout.com_interview") { id } }' --jq '.data.repository.id')
-          CAT_ID="DIC_kwDORppi0c4C45zE"  # Announcements
+          CAT_ID="DIC_kwDORppi0c4C46Bb"  # Weekly Reports (Q&A format)
 
           # Add footer linking to the git-tracked report
           {

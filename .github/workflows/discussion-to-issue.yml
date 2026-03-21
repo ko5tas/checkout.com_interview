@@ -1,0 +1,68 @@
+name: Discussion Answer to Issue
+
+on:
+  discussion:
+    types: [answered]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  create-issue:
+    name: Create Issue from Accepted Answer
+    runs-on: ubuntu-latest
+    # Only trigger for the Weekly Reports category
+    if: github.event.discussion.category.slug == 'weekly-reports'
+    steps:
+      - name: Create issue from accepted answer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCUSSION_TITLE: ${{ github.event.discussion.title }}
+          DISCUSSION_URL: ${{ github.event.discussion.html_url }}
+          DISCUSSION_NUMBER: ${{ github.event.discussion.number }}
+        run: |
+          # Fetch the accepted answer safely via GraphQL (no user input in shell)
+          ANSWER=$(gh api graphql -f query='
+            query($num: Int!) {
+              repository(owner: "ko5tas", name: "checkout.com_interview") {
+                discussion(number: $num) {
+                  answer {
+                    body
+                    author { login }
+                    url
+                  }
+                }
+              }
+            }' -F "num=$DISCUSSION_NUMBER" --jq '.data.repository.discussion.answer')
+
+          ANSWER_BODY=$(echo "$ANSWER" | jq -r '.body')
+          ANSWER_AUTHOR=$(echo "$ANSWER" | jq -r '.author.login')
+          ANSWER_URL=$(echo "$ANSWER" | jq -r '.url')
+
+          # Build issue title from first line of answer (truncated)
+          TITLE_LINE=$(echo "$ANSWER_BODY" | head -1 | cut -c1-70)
+
+          # Write issue body to a file (avoids shell injection from user content)
+          cat > /tmp/issue-body.md <<BODYEOF
+          ## Context
+
+          Accepted answer from weekly report discussion.
+
+          **Source**: [${DISCUSSION_TITLE}](${DISCUSSION_URL})
+          **Accepted answer by**: @${ANSWER_AUTHOR} ([view comment](${ANSWER_URL}))
+
+          ## Description
+
+          ${ANSWER_BODY}
+
+          ---
+          *Auto-created from an accepted Discussion answer.*
+          BODYEOF
+
+          gh issue create \
+            --title "action: ${TITLE_LINE}" \
+            --body-file /tmp/issue-body.md \
+            --label "ai-advisor"
+
+          echo "Issue created from accepted answer in discussion #${DISCUSSION_NUMBER}"
