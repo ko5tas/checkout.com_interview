@@ -230,9 +230,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit (report already exists for today)"
           else
-            git commit -m "report: weekly AI architecture review ${REPORT_DATE}
-
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
+            git commit -m "report: weekly AI architecture review ${REPORT_DATE}"
             git push
           fi
 
