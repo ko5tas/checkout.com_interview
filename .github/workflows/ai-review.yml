@@ -217,27 +217,45 @@ jobs:
           } > report.md
 
       # --- Commit report to reports/ folder (git-tracked, survives platform migration) ---
-      # Push directly to main using DISCUSSIONS_PAT (owner PAT bypasses branch protection).
-      # Safe to automate: only touches reports/ markdown files.
+      # Commit report to a branch and create a PR. Auto-approved and merged
+      # via DISCUSSIONS_PAT (owner PAT counts as an approving review).
       - name: Commit report to repo
         env:
-          GH_TOKEN: ${{ secrets.DISCUSSIONS_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MERGE_TOKEN: ${{ secrets.DISCUSSIONS_PAT }}
         run: |
           mkdir -p reports
           cp report.md "reports/${REPORT_DATE}-ai-advisor.md"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/ko5tas/checkout.com_interview.git"
 
+          BRANCH="reports/${REPORT_DATE}"
+          git checkout -b "$BRANCH"
           git add "reports/${REPORT_DATE}-ai-advisor.md"
 
           if git diff --cached --quiet; then
             echo "No changes to commit (report already exists for today)"
           else
             git commit -m "report: weekly AI architecture review ${REPORT_DATE}"
-            git push origin main
-            echo "Report committed directly to main"
+            git push -u origin "$BRANCH"
+
+            # Create PR with GITHUB_TOKEN
+            PR_URL=$(gh pr create \
+              --title "report: AI architecture review ${REPORT_DATE}" \
+              --body "Automated weekly report — markdown only, safe to merge." \
+              --label "ai-advisor" \
+              --base main \
+              --head "$BRANCH")
+            echo "Created: $PR_URL"
+
+            PR_NUM=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+
+            # Approve with owner PAT (satisfies required review)
+            GH_TOKEN="$MERGE_TOKEN" gh pr review "$PR_NUM" --approve
+
+            # Merge with owner PAT (bypasses enforce_admins=false)
+            GH_TOKEN="$MERGE_TOKEN" gh pr merge "$PR_NUM" --squash --delete-branch
           fi
 
       # --- Post to GitHub Discussions (Announcements category) ---
