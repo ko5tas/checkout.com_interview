@@ -6,8 +6,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   issues: write
+  discussions: write
   security-events: read
 
 jobs:
@@ -195,15 +196,16 @@ jobs:
                   break
           PYSCRIPT
 
-      # --- Create or update GitHub Issue ---
-      - name: Post report as GitHub Issue
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # --- Assemble report ---
+      - name: Assemble report
         run: |
+          REPORT_DATE=$(date -u +%Y-%m-%d)
+          echo "REPORT_DATE=$REPORT_DATE" >> "$GITHUB_ENV"
+
           {
             echo "# Weekly AI Architecture Review"
             echo ""
-            echo "*Generated automatically — $(date -u +%Y-%m-%d)*"
+            echo "*Generated automatically — ${REPORT_DATE}*"
             echo ""
             cat versions.md
             cat latest.md
@@ -214,25 +216,72 @@ jobs:
             cat ai-report.md
           } > report.md
 
-          EXISTING=$(gh issue list --label "ai-advisor" --state open --json number --jq '.[0].number // empty')
+      # --- Commit report to reports/ folder (git-tracked, survives platform migration) ---
+      - name: Commit report to repo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p reports
+          cp report.md "reports/${REPORT_DATE}-ai-advisor.md"
 
-          if [ -n "$EXISTING" ]; then
-            gh issue comment "$EXISTING" --body-file report.md
-            echo "Updated existing issue #$EXISTING"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "reports/${REPORT_DATE}-ai-advisor.md"
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit (report already exists for today)"
           else
-            gh issue create \
-              --title "AI Architecture Review — $(date -u +%Y-%m-%d)" \
-              --body-file report.md \
-              --label "ai-advisor,improvement"
+            git commit -m "report: weekly AI architecture review ${REPORT_DATE}
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
+            git push
           fi
+
+      # --- Post to GitHub Discussions (Announcements category) ---
+      - name: Post report as Discussion
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO_ID=$(gh api graphql -f query='{ repository(owner:"ko5tas", name:"checkout.com_interview") { id } }' --jq '.data.repository.id')
+          CAT_ID="DIC_kwDORppi0c4C45zE"  # Announcements
+
+          # Add footer linking to the git-tracked report
+          {
+            cat report.md
+            echo ""
+            echo "---"
+            echo "📁 *This report is also committed to [\`reports/${REPORT_DATE}-ai-advisor.md\`](../blob/main/reports/${REPORT_DATE}-ai-advisor.md) for offline access.*"
+          } > discussion-body.md
+
+          BODY=$(cat discussion-body.md | jq -Rs .)
+          TITLE="Weekly AI Architecture Review — ${REPORT_DATE}"
+
+          gh api graphql -f query="
+            mutation {
+              createDiscussion(input: {
+                repositoryId: \"${REPO_ID}\",
+                categoryId: \"${CAT_ID}\",
+                title: \"${TITLE}\",
+                body: ${BODY}
+              }) {
+                discussion { url number }
+              }
+            }" --jq '.data.createDiscussion.discussion.url'
+
+      # --- Close previous AI advisor issues (migration from old approach) ---
+      - name: Close old AI advisor issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Close any open ai-advisor issues — reports now live in Discussions
+          gh issue list --label "ai-advisor" --state open --json number --jq '.[].number' | while read -r NUM; do
+            gh issue close "$NUM" --comment "Reports have moved to [Discussions](../discussions). This issue is now closed." 2>/dev/null || true
+          done
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v7
         with:
           name: ai-advisor-${{ github.run_id }}
           path: |
-            versions.md
-            latest.md
-            repo-health.md
-            ai-report.md
+            report.md
           retention-days: 90
