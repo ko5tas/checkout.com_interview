@@ -1,3 +1,5 @@
+[![AI Architect Advisor](https://github.com/ko5tas/checkout.com_interview/actions/workflows/ai-advisor.yml/badge.svg)](https://github.com/ko5tas/checkout.com_interview/actions/workflows/ai-advisor.yml)
+
 # Checkout.com Cloud Platform Engineering — Technical Assessment
 
 Internal API deployment on Azure with Terraform, mTLS, observability, and CI/CD.
