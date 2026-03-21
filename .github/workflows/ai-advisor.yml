@@ -30,9 +30,6 @@ jobs:
           echo "|-----------|----------------|" >> versions.md
 
           # Read ACTUAL locked versions from .terraform.lock.hcl (inlined to avoid subshell issues)
-          echo "Debug: lock file exists=$(test -f .terraform.lock.hcl && echo yes || echo no)"
-          echo "Debug: azurerm grep=$(grep -A2 'hashicorp/azurerm' .terraform.lock.hcl | grep 'version' | head -1)"
-
           TF_AZURERM=$(grep -A2 'hashicorp/azurerm' .terraform.lock.hcl 2>/dev/null | grep '  version' | head -1 | tr -d ' "' | cut -d= -f2)
           TF_AZURERM_CONSTRAINT=$(grep 'version.*=.*"~>' versions.tf | head -1 | grep -oE '"[^"]+"' | tr -d '"')
           echo "| azurerm provider | ${TF_AZURERM:-unknown} (constraint: ${TF_AZURERM_CONSTRAINT}) |" >> versions.md
