@@ -29,14 +29,25 @@ jobs:
           echo "| Dependency | Current Version |" >> versions.md
           echo "|-----------|----------------|" >> versions.md
 
-          TF_AZURERM=$(grep 'version.*=.*"~>' versions.tf | head -1 | grep -oE '"[^"]+"' | tr -d '"')
-          echo "| azurerm provider | $TF_AZURERM |" >> versions.md
+          # Read ACTUAL locked versions from .terraform.lock.hcl, not constraints from versions.tf
+          TF_AZURERM=$(grep -A1 'provider "registry.terraform.io/hashicorp/azurerm"' .terraform.lock.hcl | grep 'version' | grep -oE '"[^"]+"' | tr -d '"')
+          TF_AZURERM_CONSTRAINT=$(grep 'version.*=.*"~>' versions.tf | head -1 | grep -oE '"[^"]+"' | tr -d '"')
+          echo "| azurerm provider | ${TF_AZURERM} (constraint: ${TF_AZURERM_CONSTRAINT}) |" >> versions.md
 
           GO_VER=$(grep '^go ' function-app/go.mod | awk '{print $2}')
           echo "| Go | $GO_VER |" >> versions.md
 
           TF_VER=$(grep 'required_version' versions.tf | grep -oE '"[^"]+"' | tr -d '"')
-          echo "| Terraform | $TF_VER |" >> versions.md
+          echo "| Terraform CLI (constraint) | $TF_VER |" >> versions.md
+
+          TF_TLS=$(grep -A1 'provider "registry.terraform.io/hashicorp/tls"' .terraform.lock.hcl | grep 'version' | grep -oE '"[^"]+"' | tr -d '"')
+          echo "| tls provider | ${TF_TLS} |" >> versions.md
+
+          TF_RANDOM=$(grep -A1 'provider "registry.terraform.io/hashicorp/random"' .terraform.lock.hcl | grep 'version' | grep -oE '"[^"]+"' | tr -d '"')
+          echo "| random provider | ${TF_RANDOM} |" >> versions.md
+
+          TF_TIME=$(grep -A1 'provider "registry.terraform.io/hashicorp/time"' .terraform.lock.hcl | grep 'version' | grep -oE '"[^"]+"' | tr -d '"')
+          echo "| time provider | ${TF_TIME} |" >> versions.md
 
           echo "" >> versions.md
 
