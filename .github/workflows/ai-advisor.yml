@@ -98,15 +98,15 @@ jobs:
           echo "" >> repo-health.md
 
           BP=$(gh api repos/ko5tas/checkout.com_interview/branches/main/protection \
-            --jq '.required_pull_request_reviews.required_approving_review_count' 2>/dev/null || echo "not set")
+            --jq '.required_pull_request_reviews.required_approving_review_count' 2>&1) || BP="not accessible (requires admin token)"
           echo "- Branch protection (required reviewers): $BP" >> repo-health.md
 
           ALERTS=$(gh api repos/ko5tas/checkout.com_interview/dependabot/alerts \
-            --jq '[.[] | select(.state=="open")] | length' 2>/dev/null || echo "0")
+            --jq '[.[] | select(.state=="open")] | length' 2>&1) || ALERTS="not accessible (enable Dependabot alerts in repo settings)"
           echo "- Open Dependabot alerts: $ALERTS" >> repo-health.md
 
           SECRETS=$(gh api repos/ko5tas/checkout.com_interview/secret-scanning/alerts \
-            --jq '[.[] | select(.state=="open")] | length' 2>/dev/null || echo "0")
+            --jq '[.[] | select(.state=="open")] | length' 2>&1) || SECRETS="not accessible (requires GitHub Advanced Security)"
           echo "- Open secret scanning alerts: $SECRETS" >> repo-health.md
 
           SKIPS=$(grep -c "^  - CKV" .checkov.yml 2>/dev/null || echo "0")
