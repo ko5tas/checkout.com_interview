@@ -29,10 +29,17 @@ jobs:
           echo "| Dependency | Current Version |" >> versions.md
           echo "|-----------|----------------|" >> versions.md
 
-          # Read ACTUAL locked versions from .terraform.lock.hcl, not constraints from versions.tf
-          TF_AZURERM=$(grep -A1 'provider "registry.terraform.io/hashicorp/azurerm"' .terraform.lock.hcl | grep 'version' | grep -oE '"[^"]+"' | tr -d '"')
+          # Read ACTUAL locked versions from .terraform.lock.hcl using awk (robust across grep implementations)
+          extract_locked_version() {
+            awk -v provider="$1" '
+              $0 ~ "provider.*" provider { found=1 }
+              found && /version[[:space:]]*=/ && !/constraints/ { gsub(/[" ]/, ""); split($0,a,"="); print a[2]; exit }
+            ' .terraform.lock.hcl
+          }
+
+          TF_AZURERM=$(extract_locked_version "hashicorp/azurerm")
           TF_AZURERM_CONSTRAINT=$(grep 'version.*=.*"~>' versions.tf | head -1 | grep -oE '"[^"]+"' | tr -d '"')
-          echo "| azurerm provider | ${TF_AZURERM} (constraint: ${TF_AZURERM_CONSTRAINT}) |" >> versions.md
+          echo "| azurerm provider | ${TF_AZURERM:-unknown} (constraint: ${TF_AZURERM_CONSTRAINT}) |" >> versions.md
 
           GO_VER=$(grep '^go ' function-app/go.mod | awk '{print $2}')
           echo "| Go | $GO_VER |" >> versions.md
@@ -40,14 +47,14 @@ jobs:
           TF_VER=$(grep 'required_version' versions.tf | grep -oE '"[^"]+"' | tr -d '"')
           echo "| Terraform CLI (constraint) | $TF_VER |" >> versions.md
 
-          TF_TLS=$(grep -A1 'provider "registry.terraform.io/hashicorp/tls"' .terraform.lock.hcl | grep 'version' | grep -oE '"[^"]+"' | tr -d '"')
-          echo "| tls provider | ${TF_TLS} |" >> versions.md
+          TF_TLS=$(extract_locked_version "hashicorp/tls")
+          echo "| tls provider | ${TF_TLS:-unknown} |" >> versions.md
 
-          TF_RANDOM=$(grep -A1 'provider "registry.terraform.io/hashicorp/random"' .terraform.lock.hcl | grep 'version' | grep -oE '"[^"]+"' | tr -d '"')
-          echo "| random provider | ${TF_RANDOM} |" >> versions.md
+          TF_RANDOM=$(extract_locked_version "hashicorp/random")
+          echo "| random provider | ${TF_RANDOM:-unknown} |" >> versions.md
 
-          TF_TIME=$(grep -A1 'provider "registry.terraform.io/hashicorp/time"' .terraform.lock.hcl | grep 'version' | grep -oE '"[^"]+"' | tr -d '"')
-          echo "| time provider | ${TF_TIME} |" >> versions.md
+          TF_TIME=$(extract_locked_version "hashicorp/time")
+          echo "| time provider | ${TF_TIME:-unknown} |" >> versions.md
 
           echo "" >> versions.md
 
