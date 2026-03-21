@@ -29,12 +29,10 @@ jobs:
           echo "| Dependency | Current Version |" >> versions.md
           echo "|-----------|----------------|" >> versions.md
 
-          # Read ACTUAL locked versions from .terraform.lock.hcl using awk (robust across grep implementations)
+          # Read ACTUAL locked versions from .terraform.lock.hcl
+          # Uses sed to extract version line after provider block header
           extract_locked_version() {
-            awk -v provider="$1" '
-              $0 ~ "provider.*" provider { found=1 }
-              found && /version[[:space:]]*=/ && !/constraints/ { gsub(/[" ]/, ""); split($0,a,"="); print a[2]; exit }
-            ' .terraform.lock.hcl
+            sed -n "\\|provider.*$1|,/^}/{/^  version/p;}" .terraform.lock.hcl | head -1 | sed 's/.*= *"//;s/".*//'
           }
 
           TF_AZURERM=$(extract_locked_version "hashicorp/azurerm")
