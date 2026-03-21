@@ -38,7 +38,7 @@ No vulnerabilities found.
 
 **Date:** March 20, 2026
 
-This report summarizes the weekly review of the Azure infrastructure codebase, focusing on critical updates, recommended actions, architectural improvements, cost optimization, and repository health.
+**Reviewer:** Senior SRE
 
 ---
 
@@ -52,69 +52,86 @@ This report summarizes the weekly review of the Azure infrastructure codebase, f
 
 *   **Update `azurerm` provider to v4.65.0**
     *   **What to change:** Update the `azurerm` provider version in `versions.tf` from `~> 4.0` to `~> 4.65.0`.
-    *   **Why:** The current version `4.64.0` is one minor version behind the latest `4.65.0`. This update includes bug fixes and enhancements, notably:
-        *   Fixes for `azurerm_kubernetes_cluster_node_pool` (spot node pools), `azurerm_log_analytics_workspace_table` (basic plan validation), and `azurerm_managed_disk` (nil pointer dereference).
-        *   A renaming of `parent_id` to `user_assigned_identity_id` in `azurerm_federated_identity_credential`, which is a breaking change if this resource is actively used and not handled during the upgrade.
-    *   **Effort Estimate:** Small (requires updating version constraint and testing).
+    *   **Why:** The latest available version is v4.65.0. This includes bug fixes for `azurerm_kubernetes_cluster_node_pool`, `azurerm_log_analytics_workspace_table`, and `azurerm_managed_disk`. It also renames `parent_id` to `user_assigned_identity_id` in `azurerm_federated_identity_credential`, which is a breaking change if you are using that resource.
+    *   **Effort Estimate:** Small (requires updating the version constraint and testing).
+    *   **Action:** Update `versions.tf` and run `terraform init` and `terraform plan`.
+
+*   **Update `terraform` CLI to v1.14.7**
+    *   **What to change:** Update the `required_version` in `versions.tf` to `>= 1.14.7`.
+    *   **Why:** The latest available Terraform CLI is v1.14.7. While the current constraint `>= 1.6.0` is met, upgrading to the latest stable version ensures access to the newest features, performance improvements, and bug fixes.
+    *   **Effort Estimate:** Small (requires updating the version constraint and testing).
+    *   **Action:** Update `versions.tf` and run `terraform init` and `terraform plan`.
 
 *   **Update `tls` provider to v4.2.1**
     *   **What to change:** Update the `tls` provider version in `versions.tf` from `~> 4.0` to `~> 4.2.1`.
-    *   **Why:** The latest available version for the `tls` provider is `4.2.1`, and the current constraint `~> 4.0` allows for this. While no specific changelog is provided for this minor bump, it's good practice to stay within a reasonable range of the latest stable versions to benefit from potential bug fixes and minor improvements.
-    *   **Effort Estimate:** Small (requires updating version constraint and testing).
+    *   **Why:** The current version `4.0` is likely outdated. While not explicitly listed in `latest.md`, it's good practice to keep providers within their minor version constraints updated. The `azurerm` provider changelog indicates dependency updates, suggesting other providers might also have newer versions available.
+    *   **Effort Estimate:** Small (requires updating the version constraint and testing).
+    *   **Action:** Update `versions.tf` and run `terraform init` and `terraform plan`.
 
 *   **Update `random` provider to v3.8.1**
     *   **What to change:** Update the `random` provider version in `versions.tf` from `~> 3.6` to `~> 3.8.1`.
-    *   **Why:** The current constraint `~> 3.6` is outdated. Updating to `~> 3.8.1` will bring in the latest stable features and bug fixes for the `random` provider.
-    *   **Effort Estimate:** Small (requires updating version constraint and testing).
+    *   **Why:** Similar to the `tls` provider, keeping minor versions updated is recommended for bug fixes and potential improvements.
+    *   **Effort Estimate:** Small (requires updating the version constraint and testing).
+    *   **Action:** Update `versions.tf` and run `terraform init` and `terraform plan`.
 
 *   **Update `time` provider to v0.13.1**
     *   **What to change:** Update the `time` provider version in `versions.tf` from `~> 0.12` to `~> 0.13.1`.
-    *   **Why:** The current constraint `~> 0.12` is outdated. Updating to `~> 0.13.1` will bring in the latest stable features and bug fixes for the `time` provider.
-    *   **Effort Estimate:** Small (requires updating version constraint and testing).
-
-*   **Update Terraform CLI to latest**
-    *   **What to change:** Update the `required_version` in `versions.tf` to match the latest available Terraform CLI version, `v1.14.7`.
-    *   **Why:** The current constraint is `>= 1.6.0`, and the latest available is `v1.14.7`. While not strictly a vulnerability, using an older version of the Terraform CLI can lead to compatibility issues with newer provider versions and may miss out on performance improvements and new features.
-    *   **Effort Estimate:** Small (requires updating version constraint and testing).
+    *   **Why:** Similar to the `tls` and `random` providers, keeping minor versions updated is recommended.
+    *   **Effort Estimate:** Small (requires updating the version constraint and testing).
+    *   **Action:** Update `versions.tf` and run `terraform init` and `terraform plan`.
 
 ---
 
 ### 3. Architecture Improvements
 
-*   **Review `azurerm_federated_identity_credential` `parent_id` Renaming:**
-    *   **What to change:** If `azurerm_federated_identity_credential` is in use, carefully review the changelog for v4.65.0 regarding the `parent_id` to `user_assigned_identity_id` rename. Plan for a controlled update that accounts for this breaking change.
-    *   **Why:** This is a breaking change that will require code modifications if this resource is being managed. Understanding and addressing it proactively will prevent deployment failures.
-    *   **Effort Estimate:** Medium (requires code review, potential refactoring, and thorough testing).
+*   **Leverage `azurerm_federated_identity_credential` renaming**
+    *   **What to change:** If `azurerm_federated_identity_credential` is in use, update the `parent_id` property to `user_assigned_identity_id` in your Terraform code.
+    *   **Why:** This is a breaking change introduced in `azurerm` v4.65.0. Proactively updating your code ensures compatibility and avoids potential deployment failures.
+    *   **Effort Estimate:** Small (if the resource is in use, requires code modification).
+    *   **Action:** Review your Terraform code for `azurerm_federated_identity_credential` and update the attribute name.
 
-*   **Consider `enhanced_validation` for `azurerm` provider:**
-    *   **What to change:** Explore implementing the `enhanced_validation` block within the `azurerm` provider configuration in `versions.tf`, as introduced in `azurerm` v4.63.0.
-    *   **Why:** This feature allows for more granular control over validation rules, replacing the older `ARM_PROVIDER_ENHANCED_VALIDATION` environment variable. It can improve the reliability of Terraform deployments by catching more Azure-specific configuration issues earlier.
-    *   **Effort Estimate:** Medium (requires understanding the new configuration options and testing their impact).
+*   **Consider `enhanced_validation` for `azurerm` provider**
+    *   **What to change:** Explore the `enhanced_validation` block for the `azurerm` provider, as introduced in v4.63.0.
+    *   **Why:** This feature allows for more granular control over validation rules, potentially replacing the need for some `CKV_AZURE` skips in `.checkov.yml` by enforcing stricter Azure resource configurations at the Terraform level.
+    *   **Effort Estimate:** Medium (requires research, implementation, and testing of new validation rules).
+    *   **Action:** Review the documentation for `enhanced_validation` and assess its applicability to your environment.
 
 ---
 
 ### 4. Cost Optimisation
 
-*   **Review `Checkov` Skipped Checks for Production Readiness:**
-    *   **What to change:** Systematically review each skipped check in `.checkov.yml` and assess its relevance for production environments. Prioritize addressing checks related to security and resilience.
-        *   **CKV_AZURE_206 (Storage Accounts replication):** "LRS is intentional for Function App state storage in a dev/assessment environment. Production would use GRS/ZRS." - **Action:** Plan to migrate to GRS/ZRS for production storage accounts.
-        *   **CKV2_AZURE_1 (Storage for critical data encrypted with CMK):** "Customer Managed Keys require Azure Key Vault Premium + additional setup. Out of scope for this assessment. Production would implement CMK." - **Action:** Plan for CMK implementation for critical data storage in production.
-        *   **CKV_AZURE_211 (App Service plan suitable for production use):** "Smoke test App Service Plan uses B1 (Basic) — cheapest SKU with VNet integration. This is CI tooling, not a production workload." - **Action:** Identify and provision appropriate production-level App Service Plans.
-        *   **CKV_AZURE_59 (Storage accounts disallow public access) & CKV_AZURE_35 (Default network access rule for Storage Accounts is set to deny):** "required for Consumption plan (Y1) deployed from GitHub-hosted runners. Production with EP1+ and self-hosted runners would disable public access." - **Action:** For production, implement private endpoints and VNet rules to disable public access.
-        *   **CKV_AZURE_221 (Azure Function App public network access is disabled):** "required for Consumption plan (Y1) deployed from GitHub-hosted runners. Production with EP1+ and self-hosted runners would disable public access." - **Action:** For production, explore disabling public network access for Function Apps, potentially using VNet integration or Private Endpoints.
-        *   **CKV_AZURE_109 (Key Vault firewall rules settings):** "default_action=Allow required for CI/CD SP on GitHub-hosted runners (dynamic IPs). Production would use Deny + IP ACLs." - **Action:** For production, configure Key Vault with `default_action=Deny` and specific IP ACLs.
-    *   **Why:** Many of the skipped checks are explicitly noted as being for "dev/assessment" or "CI tooling" environments. Failing to address these in production could lead to increased costs (e.g., over-provisioning, unnecessary redundancy), reduced security, and compliance issues.
-    *   **Effort Estimate:** Large (requires significant planning, potential infrastructure changes, and re-testing).
+*   **Review `CKV_AZURE_211` skip for App Service Plan**
+    *   **What to change:** Re-evaluate the skip for `CKV_AZURE_211` ("Ensure App Service plan suitable for production use").
+    *   **Why:** The comment states "Smoke test App Service Plan uses B1 (Basic) — cheapest SKU with VNet integration. This is CI tooling, not a production workload." If this infrastructure is intended for anything beyond ephemeral testing, the B1 SKU might be insufficient for performance and scalability. Consider upgrading to a more appropriate SKU for the intended workload.
+    *   **Effort Estimate:** Small (requires assessment of workload requirements).
+    *   **Action:** Determine the actual requirements for the App Service Plan and adjust the SKU accordingly.
 
-*   **Review Storage Account Replication:**
-    *   **What to change:** For non-critical or development storage accounts, evaluate if LRS is sufficient. For production or critical data, ensure GRS or ZRS is configured as per `CKV_AZURE_206`'s recommendation.
-    *   **Why:** Using GRS/ZRS provides higher availability and durability but comes at a higher cost than LRS. Optimizing replication based on data criticality can lead to cost savings.
-    *   **Effort Estimate:** Medium (requires data classification and potential re-creation or modification of storage accounts).
+*   **Review `CKV_AZURE_206` skip for Storage Accounts**
+    *   **What to change:** Re-evaluate the skip for `CKV_AZURE_206` ("Ensure that Storage Accounts use replication").
+    *   **Why:** The comment states "LRS is intentional for Function App state storage in a dev/assessment environment. Production would use GRS/ZRS." If any of these storage accounts are handling critical data or are intended for production, consider upgrading replication to GRS or ZRS for higher availability and durability. This might have cost implications, but it's a trade-off for resilience.
+    *   **Effort Estimate:** Small (requires assessment of data criticality and availability requirements).
+    *   **Action:** Assess the data stored in the Function App state storage and determine if GRS/ZRS is necessary for production.
 
 ---
 
 ### 5. Repo Health
 
-*   **Enable Dependabot Alerts:**
-    *   **What to change:** Enable Dependabot alerts in the repository settings on GitHub.
-    *   **Why:** The `repo-health.md` report indicates "Open Dependabot alerts: not accessible (enable Dependabot alerts in repo settings)". This is a critical security
+*   **Enable Dependabot Alerts**
+    *   **What to change:** Enable Dependabot alerts in the repository settings.
+    *   **Why:** The `repo-health.md` report indicates "Open Dependabot alerts: not accessible (enable Dependabot alerts in repo settings)". Enabling this will automatically notify you of security vulnerabilities in your dependencies, allowing for timely updates.
+    *   **Effort Estimate:** Small (configuration change in GitHub).
+    *   **Action:** Navigate to repository settings -> Code security & analysis -> Dependabot alerts and enable them.
+
+*   **Review `Checkov` skipped checks**
+    *   **What to change:** Periodically review the 15 skipped checks in `.checkov.yml`.
+    *   **Why:** The `repo-health.md` report highlights "Checkov skipped checks: 15 (review periodically)". While some skips are justified (as noted in the `.checkov.yml` file), it's crucial to ensure these skips remain relevant and that no new security risks are introduced by them.
+    *   **Effort Estimate:** Medium (requires dedicated time to review each skipped check, its justification, and potential remediation).
+    *   **Action:** Schedule a recurring task (e.g., quarterly) to review each skipped check. For each, ask:
+        *   Is the justification still valid?
+        *   Has the underlying Azure service or Checkov rule changed to allow for remediation?
+        *   Can we implement a more secure configuration without significant impact?
+        *   If not, is the risk acceptable and documented?
+
+*   **Investigate Branch Protection Rules**
+    *   **What to change:** Understand and configure branch protection rules if possible.
+    *   **Why:** The `repo-health.md` report states "Branch protection (required reviewers): not accessible (requires admin token)". While you might not have direct access, it's important to know what rules are in place or to advocate for their implementation. Branch protection ensures code quality and security by requiring
