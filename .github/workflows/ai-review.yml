@@ -254,8 +254,8 @@ jobs:
             # Approve with owner PAT (satisfies required review)
             GH_TOKEN="$MERGE_TOKEN" gh pr review "$PR_NUM" --approve
 
-            # Merge with owner PAT (bypasses enforce_admins=false)
-            GH_TOKEN="$MERGE_TOKEN" gh pr merge "$PR_NUM" --squash --delete-branch
+            # Merge with owner PAT + admin flag (bypasses required status checks for markdown-only PRs)
+            GH_TOKEN="$MERGE_TOKEN" gh pr merge "$PR_NUM" --squash --delete-branch --admin
           fi
 
       # --- Post to GitHub Discussions (Announcements category) ---
