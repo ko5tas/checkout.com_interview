@@ -29,12 +29,11 @@ jobs:
           echo "| Dependency | Current Version |" >> versions.md
           echo "|-----------|----------------|" >> versions.md
 
-          # Read ACTUAL locked versions from .terraform.lock.hcl
-          extract_locked_version() {
-            grep -A2 "$1" .terraform.lock.hcl | grep 'version' | head -1 | tr -d ' "' | cut -d= -f2
-          }
+          # Read ACTUAL locked versions from .terraform.lock.hcl (inlined to avoid subshell issues)
+          echo "Debug: lock file exists=$(test -f .terraform.lock.hcl && echo yes || echo no)"
+          echo "Debug: azurerm grep=$(grep -A2 'hashicorp/azurerm' .terraform.lock.hcl | grep 'version' | head -1)"
 
-          TF_AZURERM=$(extract_locked_version "hashicorp/azurerm")
+          TF_AZURERM=$(grep -A2 'hashicorp/azurerm' .terraform.lock.hcl 2>/dev/null | grep '  version' | head -1 | tr -d ' "' | cut -d= -f2)
           TF_AZURERM_CONSTRAINT=$(grep 'version.*=.*"~>' versions.tf | head -1 | grep -oE '"[^"]+"' | tr -d '"')
           echo "| azurerm provider | ${TF_AZURERM:-unknown} (constraint: ${TF_AZURERM_CONSTRAINT}) |" >> versions.md
 
@@ -44,13 +43,13 @@ jobs:
           TF_VER=$(grep 'required_version' versions.tf | grep -oE '"[^"]+"' | tr -d '"')
           echo "| Terraform CLI (constraint) | $TF_VER |" >> versions.md
 
-          TF_TLS=$(extract_locked_version "hashicorp/tls")
+          TF_TLS=$(grep -A2 'hashicorp/tls' .terraform.lock.hcl 2>/dev/null | grep '  version' | head -1 | tr -d ' "' | cut -d= -f2)
           echo "| tls provider | ${TF_TLS:-unknown} |" >> versions.md
 
-          TF_RANDOM=$(extract_locked_version "hashicorp/random")
+          TF_RANDOM=$(grep -A2 'hashicorp/random' .terraform.lock.hcl 2>/dev/null | grep '  version' | head -1 | tr -d ' "' | cut -d= -f2)
           echo "| random provider | ${TF_RANDOM:-unknown} |" >> versions.md
 
-          TF_TIME=$(extract_locked_version "hashicorp/time")
+          TF_TIME=$(grep -A2 'hashicorp/time' .terraform.lock.hcl 2>/dev/null | grep '  version' | head -1 | tr -d ' "' | cut -d= -f2)
           echo "| time provider | ${TF_TIME:-unknown} |" >> versions.md
 
           echo "" >> versions.md
